@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 
@@ -10,15 +11,16 @@ final class DockManager: ObservableObject {
   @Published private(set) var authorizationState: DockAuthorizationState
 
   private let prefsClient: DockPreferencesClient
-  private let automationService: DockAutomationService
+  private let automationService: DockAutomationControlling
   private let authorizationManager: DockAuthorizationManager
   private let configStore: AppConfigurationStore
   private let evaluator: DockWindowOverlapEvaluator
   private let engine: SmartPolicyEngine
   private var cancellables = Set<AnyCancellable>()
+  private var screenParametersObserver: NSObjectProtocol?
 
   private var pendingSmartWork: DispatchWorkItem?
-  private var pendingSmartState: Bool?
+  private var pendingSmartDecision: DockOverlapDecision?
   private var lastSmartApplyAt: Date?
   private let smartDebounce: TimeInterval = 0.0
   private let smartCooldown: TimeInterval = 0.1
@@ -30,7 +32,7 @@ final class DockManager: ObservableObject {
 
   init(
     prefsClient: DockPreferencesClient = DockPreferencesClient(),
-    automationService: DockAutomationService = DockAutomationService(),
+    automationService: DockAutomationControlling = DockAutomationService(),
     authorizationManager: DockAuthorizationManager = DockAuthorizationManager(),
     configStore: AppConfigurationStore = AppConfigurationStore(),
     engine: SmartPolicyEngine? = nil
@@ -39,7 +41,7 @@ final class DockManager: ObservableObject {
     self.automationService = automationService
     self.authorizationManager = authorizationManager
     self.configStore = configStore
-    let evaluator = DockWindowOverlapEvaluator(prefsClient: prefsClient)
+    let evaluator = engine?.evaluator ?? DockWindowOverlapEvaluator(prefsClient: prefsClient)
     self.evaluator = evaluator
     self.engine = engine ?? SmartPolicyEngine(evaluator: evaluator)
 
@@ -142,11 +144,10 @@ final class DockManager: ObservableObject {
   }
 
   private func configureEngine() {
-    engine.onDecision = { [weak self] shouldAutoHide, _ in
+    engine.onDecision = { [weak self] decision in
       guard let self else { return }
-      DispatchQueue.main.async {
-        self.scheduleSmartApply(shouldAutoHide)
-      }
+      self.logSmartDecision(decision)
+      self.scheduleSmartApply(decision)
     }
   }
 
@@ -182,7 +183,7 @@ final class DockManager: ObservableObject {
       }
     case .denied, .notDetermined:
       stopSmartMode()
-      pendingSmartState = nil
+      pendingSmartDecision = nil
       cancelPendingApply()
       smartEnabled = false
       manualAutoHideEnabled = false
@@ -193,14 +194,20 @@ final class DockManager: ObservableObject {
 
   private func startSmartMode() {
     guard isAuthorized else { return }
+    registerScreenParametersObserverIfNeeded()
     engine.start()
   }
 
   private func stopSmartMode() {
     engine.stop()
+    unregisterScreenParametersObserver()
     pendingSmartWork?.cancel()
     pendingSmartWork = nil
-    pendingSmartState = nil
+    pendingSmartDecision = nil
+    lastSmartApplyAt = nil
+    if pendingApplySource == .smart {
+      cancelPendingApply()
+    }
   }
 
   private func cancelPendingApply() {
@@ -229,9 +236,9 @@ final class DockManager: ObservableObject {
     }
   }
 
-  private func scheduleSmartApply(_ desired: Bool) {
-    guard isAuthorized else { return }
-    pendingSmartState = desired
+  private func scheduleSmartApply(_ decision: DockOverlapDecision) {
+    guard isAuthorized, smartEnabled else { return }
+    pendingSmartDecision = decision
     pendingSmartWork?.cancel()
     let work = DispatchWorkItem { [weak self] in
       self?.applySmartIfNeeded()
@@ -244,16 +251,17 @@ final class DockManager: ObservableObject {
   }
 
   private func applySmartIfNeeded() {
-    guard isAuthorized, let desired = pendingSmartState else {
+    guard isAuthorized, smartEnabled, let decision = pendingSmartDecision else {
       return
     }
+    let desired = decision.shouldAutoHide
     let now = Date()
     if let last = lastSmartApplyAt {
       let elapsed = now.timeIntervalSince(last)
       if elapsed < smartCooldown {
         let delay = smartCooldown - elapsed
         DockLogger.log(
-          "Smart apply throttled, delay=\(String(format: "%.2f", delay))s, desired=\(desired)"
+          "Smart apply throttled, delay=\(String(format: "%.2f", delay))s, desired=\(desired), screenID=\(decision.dockScreen.displayID), source=\(decision.detectionSource.rawValue)"
         )
         let work = DispatchWorkItem { [weak self] in
           self?.applySmartIfNeeded()
@@ -264,7 +272,35 @@ final class DockManager: ObservableObject {
         return
       }
     }
-    applyAutoHide(desired, source: .smart, reason: "smartDecision")
+    applyAutoHide(desired, source: .smart, reason: decision.reason)
+  }
+
+  private func logSmartDecision(_ decision: DockOverlapDecision) {
+    let overlap = decision.overlappingWindowSummary?.logDescription ?? "none"
+    DockLogger.log(
+      "Smart decision context: autohide=\(decision.shouldAutoHide), edge=\(decision.dockEdge.rawValue), source=\(decision.detectionSource.rawValue), fallback=\(decision.fallbackReason ?? "none"), screen={\(decision.dockScreen.logDescription)}, dockFrame=\(decision.dockFrame), overlap=\(overlap)"
+    )
+  }
+
+  private func registerScreenParametersObserverIfNeeded() {
+    guard screenParametersObserver == nil else { return }
+    screenParametersObserver = NotificationCenter.default.addObserver(
+      forName: NSApplication.didChangeScreenParametersNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self, self.smartEnabled else { return }
+        DockLogger.log("Screen parameters changed; invalidating dock geometry cache")
+        self.engine.refresh(reason: "screenParametersChanged")
+      }
+    }
+  }
+
+  private func unregisterScreenParametersObserver() {
+    guard let screenParametersObserver else { return }
+    NotificationCenter.default.removeObserver(screenParametersObserver)
+    self.screenParametersObserver = nil
   }
 
   private func applyAutoHide(
@@ -319,6 +355,7 @@ final class DockManager: ObservableObject {
     }
     let reason = pendingApplyReason ?? "unknown"
     cancelPendingApply()
+    guard source != .smart || smartEnabled else { return }
     if desired == currentAutoHideEnabled {
       DockLogger.log(
         "Skip apply: coalesced to current \(desired), source=\(source.label), reason=\(reason)"
@@ -343,5 +380,9 @@ final class DockManager: ObservableObject {
         "Apply failed: autohide=\(desired), source=\(source.label), reason=\(reason)"
       )
     }
+  }
+
+  deinit {
+    unregisterScreenParametersObserver()
   }
 }

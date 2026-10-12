@@ -1,8 +1,13 @@
 import AppKit
 import Foundation
 
+protocol DockAutomationControlling {
+  func setAutoHide(_ enabled: Bool) -> Bool
+  func readAutoHide() -> Bool?
+}
+
 /// Automation layer: controls Dock auto-hide via System Events.
-final class DockAutomationService {
+final class DockAutomationService: DockAutomationControlling {
   func setAutoHide(_ enabled: Bool) -> Bool {
     let frontmost = NSWorkspace.shared.frontmostApplication
     let value = enabled ? "true" : "false"

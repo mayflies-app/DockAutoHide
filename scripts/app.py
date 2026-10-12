@@ -4,15 +4,18 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import platform
 import plistlib
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 
 sys.dont_write_bytecode = True
 LIB = Path(__file__).resolve().parent / "lib"
@@ -23,6 +26,34 @@ SIGN_APP_SCRIPT = 'set -e; source "$1"; macos_signing_resolve "$2" "$3" "$4"; if
 def execute(argv, root, capture=False):
     return subprocess.run(list(map(str, argv)), cwd=root, check=True,
                           text=True, capture_output=capture)
+
+
+def execute_native(argv, root):
+    # subprocess.run kills its direct child on KeyboardInterrupt. Native runners
+    # must retain their recorder while product-owned cleanup restores user state.
+    process = subprocess.Popen(list(map(str, argv)), cwd=root)
+    cancellation = {"signal": None, "deadline": None}
+    def cancel(signum, frame):
+        if cancellation["signal"] is None:
+            cancellation.update(signal=signum, deadline=time.monotonic() + 130)
+            if process.poll() is None:
+                process.send_signal(signal.SIGTERM)
+    previous = {value: signal.signal(value, cancel) for value in (signal.SIGINT, signal.SIGTERM)}
+    try:
+        while process.poll() is None:
+            if cancellation["deadline"] is not None and time.monotonic() >= cancellation["deadline"]:
+                # Only this owned runner PID is ended; app cleanup is never inferred.
+                process.kill()
+                process.wait()
+                raise RuntimeError("Native runner exceeded its cancellation cleanup deadline; inspect its restoration report")
+            time.sleep(0.05)
+        if cancellation["signal"] is not None:
+            raise RuntimeError("Native test interrupted; inspect its completed restoration report")
+        if process.returncode:
+            raise subprocess.CalledProcessError(process.returncode, argv)
+    finally:
+        for value, handler in previous.items():
+            signal.signal(value, handler)
 
 
 def relative_file(root, value):
@@ -66,6 +97,11 @@ def load_config(root):
         for script in scripts:
             if not relative_file(root, script).is_file():
                 raise ValueError("Xcode test script must be a file")
+    native_tests = config.get("nativeTests", {})
+    if not isinstance(native_tests, dict) or set(native_tests) - {"localizationScript"}:
+        raise ValueError("nativeTests supports localizationScript only")
+    if native_tests and not relative_file(root, native_tests.get("localizationScript")).is_file():
+        raise ValueError("Native localization script must be a file")
     packaging = config.setdefault("packaging", {})
     if not isinstance(packaging, dict):
         raise ValueError("packaging must be an object")
@@ -106,6 +142,28 @@ def load_config(root):
 
 
 def resolve_options(args, root, config):
+    if args.native:
+        if args.command != "test":
+            raise ValueError("--native is available only for test")
+        if not args.app or not args.output or not Path(args.app).is_absolute() or not Path(args.output).is_absolute():
+            raise ValueError("Native tests require explicit absolute --app and --output paths")
+        if not config.get("nativeTests", {}).get("localizationScript"):
+            raise ValueError("This product has no native localization test script")
+        args.case = args.case or "localization"
+        args.timeout_seconds = args.timeout_seconds if args.timeout_seconds is not None else 90.0
+        if not math.isfinite(args.timeout_seconds) or not 0 < args.timeout_seconds <= 86400:
+            raise ValueError("--timeout-seconds must be finite and in (0, 86400]")
+        args.app = Path(args.app).resolve(strict=True)
+        if args.app.suffix != ".app" or not args.app.is_dir():
+            raise ValueError("--app must be an existing app bundle")
+        info = plistlib.loads((args.app / "Contents/Info.plist").read_bytes())
+        if (info.get("CFBundlePackageType"), info.get("CFBundleIdentifier"), info.get("CFBundleExecutable")) != ("APPL", config["bundleIdentifier"], config["executable"]):
+            raise ValueError("Native app identity does not match this product")
+        binary = (args.app / "Contents/MacOS" / config["executable"]).resolve(strict=True)
+        if not binary.is_relative_to(args.app) or not binary.is_file() or not os.access(binary, os.X_OK):
+            raise ValueError("Native app executable must be contained and executable")
+    elif args.app or args.case or args.timeout_seconds is not None:
+        raise ValueError("--app, --case and --timeout-seconds require test --native")
     args.configuration = args.configuration or ("release" if args.command == "package" else "debug")
     args.arch = args.arch or ("universal" if args.command == "package" else "native")
     args.sign = args.sign or ("ad-hoc" if args.command == "package" else "auto")
@@ -131,6 +189,13 @@ def resolve_options(args, root, config):
             raise ValueError("Output cannot traverse symlinks")
     if args.output.exists() and not args.output.is_dir():
         raise ValueError("Output must be a directory")
+    if args.native:
+        if args.output == args.app or args.output.is_relative_to(args.app) or args.app.is_relative_to(args.output):
+            raise ValueError("Native output must not overlap the app bundle")
+        if args.output.exists() and any(args.output.iterdir()):
+            raise ValueError("Native output must be new or empty")
+        if not args.output.parent.is_dir() or not os.access(args.output.parent, os.W_OK):
+            raise ValueError("Native output requires an existing writable parent")
     return args
 
 
@@ -156,6 +221,10 @@ def xcode_args(root, config, args):
 
 
 def test_commands(root, config, args):
+    if args.native:
+        return [["bash", str(root / config["nativeTests"]["localizationScript"]),
+                 "--app", str(args.app), "--output", str(args.output),
+                 "--case", args.case, "--timeout-seconds", str(args.timeout_seconds)]]
     if config["buildSystem"] == "xcode":
         return [["env", f"TEST_ARCH={args.arch}", "bash", str(root / script)]
                 for script in config["xcode"]["testScripts"]]
@@ -365,7 +434,7 @@ def import_local(path, name):
 def perform(root, config, args, app_args):
     if args.command == "test":
         for command in test_commands(root, config, args):
-            execute(command, root)
+            (execute_native if args.native else execute)(command, root)
         return
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".app-stage-", dir=args.output.parent) as temporary:
@@ -422,6 +491,10 @@ def main(argv=None, root=None):
     parser.add_argument("--output")
     parser.add_argument("--sign", choices=("auto", "ad-hoc", "developer-id"))
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--native", action="store_true", help="Run native localization acceptance on a visible desktop using a prebuilt app")
+    parser.add_argument("--case", choices=("localization",))
+    parser.add_argument("--app", help="Absolute prebuilt app path for native tests")
+    parser.add_argument("--timeout-seconds", type=float, help="Native test execution deadline; cleanup has its own bounded grace period")
     args = parser.parse_args(argv)
     if app_args and args.command != "run":
         parser.error("Only run accepts app arguments after --")

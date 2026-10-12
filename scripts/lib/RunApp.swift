@@ -1,5 +1,11 @@
-// Development CLI: launch and stop only an explicitly supplied, validated .app.
+// Development CLI: inspect, launch and stop an explicitly supplied, validated .app.
 import AppKit
+import Darwin
+
+func processExists(_ pid: pid_t) -> Bool {
+    if Darwin.kill(pid, 0) == 0 { return true }
+    return errno != ESRCH // Permission or observation errors do not prove exit.
+}
 
 struct Failure: Error, CustomStringConvertible {
     let description: String
@@ -7,17 +13,17 @@ struct Failure: Error, CustomStringConvertible {
 }
 
 struct Request {
-    enum Operation { case stop, launch }
+    enum Operation { case inspect, stop, launch }
     let operation: Operation
     let path: String
     let verify: Bool
     let arguments: [String]
 
     init(_ input: [String]) throws {
-        guard input.count >= 2, input[0] == "--stop" || input[0] == "--launch" else {
-            throw Failure("Usage: RunApp --stop <absolute-app-path> | --launch <absolute-app-path> [--verify] [-- <app args...>]")
+        guard input.count >= 2, ["--inspect", "--stop", "--launch"].contains(input[0]) else {
+            throw Failure("Usage: RunApp --inspect <absolute-app-path> | --stop <absolute-app-path> | --launch <absolute-app-path> [--verify] [-- <app args...>]")
         }
-        operation = input[0] == "--stop" ? .stop : .launch
+        operation = input[0] == "--inspect" ? .inspect : input[0] == "--stop" ? .stop : .launch
         path = input[1]
         guard (path as NSString).isAbsolutePath else { throw Failure("App path must be absolute.") }
         var remaining = Array(input.dropFirst(2))
@@ -68,7 +74,9 @@ struct Application {
     }
 
     var running: [NSRunningApplication] {
-        NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == identifier && !$0.isTerminated }
+        NSWorkspace.shared.runningApplications.filter {
+            $0.bundleIdentifier == identifier && !$0.isTerminated && processExists($0.processIdentifier)
+        }
     }
 
     func matches(_ process: NSRunningApplication) -> Bool {
@@ -88,11 +96,25 @@ struct Application {
             }
         }
         let deadline = Date().addingTimeInterval(10)
-        while processes.contains(where: { !$0.isTerminated }) && Date() < deadline { pump() }
-        guard processes.allSatisfy(\.isTerminated) else {
+        // AppKit can retain isTerminated=false after the process has exited.
+        // Observe only the exact PIDs captured before normal termination.
+        while processes.contains(where: { processExists($0.processIdentifier) }) && Date() < deadline { pump() }
+        guard processes.allSatisfy({ !processExists($0.processIdentifier) }) else {
             throw Failure("App did not exit within 10 seconds (termination may have been cancelled). Quit it manually, then retry; no force termination was attempted.")
         }
         print("stopped count=\(processes.count) bundle=\(url.path)")
+    }
+
+    func inspect() throws {
+        let processes = running
+        guard processes.allSatisfy(matches) else {
+            throw Failure("Another running app has bundle identifier \(identifier) at a different or unverified path. No action was requested.")
+        }
+        let data = try JSONSerialization.data(withJSONObject: [
+            "runningCount": processes.count, "pids": processes.map(\.processIdentifier),
+            "bundle": url.path, "executable": executable.path,
+        ], options: [.sortedKeys])
+        print(String(decoding: data, as: UTF8.self))
     }
 
     func launch(arguments: [String], verify: Bool) throws {
@@ -141,6 +163,7 @@ do {
     let request = try Request(Array(CommandLine.arguments.dropFirst()))
     let app = try Application(path: request.path)
     switch request.operation {
+    case .inspect: try app.inspect()
     case .stop: try app.stop()
     case .launch: try app.launch(arguments: request.arguments, verify: request.verify)
     }

@@ -32,5 +32,8 @@
   },
   "packaging": {
     "infoPlist": "Resources/Info.plist"
+  },
+  "nativeTests": {
+    "localizationScript": "tools/test_localization.sh"
   }
 }

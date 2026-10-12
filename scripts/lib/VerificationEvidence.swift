@@ -107,14 +107,14 @@ func environmentSnapshot() -> [String: Any] {
     return ["macOS": read(["/usr/bin/sw_vers", "-productVersion"]), "macOSBuild": read(["/usr/bin/sw_vers", "-buildVersion"]), "architecture": read(["/usr/bin/uname", "-m"]), "swiftVersion": read(["/usr/bin/xcrun", "swift", "--version"]), "swiftPath": read(["/usr/bin/xcrun", "--find", "swift"]), "developerDirectory": read(["/usr/bin/xcode-select", "-p"])]
 }
 struct Options {
-    var project = ""; var repo = ""; var app = ""; var output = ""; var report: String?; var field: String?; var expectedID: String?; var cleanupField: String?; var timeout = 300.0; var command: [String] = []
+    var project = ""; var repo = ""; var app = ""; var output = ""; var report: String?; var field: String?; var expectedID: String?; var cleanupField: String?; var localizationCleanup = false; var timeout = 300.0; var terminationGrace = 2.0; var command: [String] = []
 }
 func parse(_ args: [String]) throws -> Options {
     var o = Options(); var seen = Set<String>(); var i = 0
     while i < args.count {
         let key = args[i]
         if key == "--" { o.command = Array(args.dropFirst(i + 1)); break }
-        guard ["--project", "--repo", "--app", "--output", "--report", "--success-field", "--expected-bundle-id", "--cleanup-field", "--timeout-seconds"].contains(key) else { throw RecorderError("Unknown argument: \(key)") }
+        guard ["--project", "--repo", "--app", "--output", "--report", "--success-field", "--expected-bundle-id", "--cleanup-field", "--localization-cleanup", "--timeout-seconds", "--termination-grace-seconds"].contains(key) else { throw RecorderError("Unknown argument: \(key)") }
         guard !seen.contains(key) else { throw RecorderError("Duplicate argument: \(key)") }; seen.insert(key)
         guard i + 1 < args.count, !args[i + 1].hasPrefix("--"), !args[i + 1].isEmpty else { throw RecorderError("Missing value: \(key)") }
         let value = args[i + 1]
@@ -127,7 +127,9 @@ func parse(_ args: [String]) throws -> Options {
         case "--success-field": o.field = value
         case "--expected-bundle-id": o.expectedID = value
         case "--cleanup-field": o.cleanupField = value
+        case "--localization-cleanup": guard value == "true" else { throw RecorderError("localization cleanup requires true") }; o.localizationCleanup = true
         case "--timeout-seconds": guard let n = Double(value), n.isFinite, n > 0, n <= 86400 else { throw RecorderError("timeout must be finite and in (0, 86400]") }; o.timeout = n
+        case "--termination-grace-seconds": guard let n = Double(value), n.isFinite, n > 0, n <= 120 else { throw RecorderError("termination grace must be finite and in (0, 120]") }; o.terminationGrace = n
         default: break
         }
         i += 2
@@ -137,6 +139,7 @@ func parse(_ args: [String]) throws -> Options {
     guard (o.report == nil) == (o.field == nil) else { throw RecorderError("--report and --success-field must be paired") }
     if let field = o.field, !["passed", "success"].contains(field) { throw RecorderError("success field must be passed or success") }
     guard o.cleanupField == nil || o.report != nil else { throw RecorderError("--cleanup-field requires --report") }
+    guard !o.localizationCleanup || o.expectedID != nil else { throw RecorderError("--localization-cleanup requires --expected-bundle-id") }
     for p in [o.repo, o.app, o.output] + [o.report].compactMap({ $0 }) { guard p.hasPrefix("/") else { throw RecorderError("All data paths must be absolute") } }
     return o
 }
@@ -179,6 +182,78 @@ var output = trustedOutput(args)
 var manifest: [String: Any] = ["schemaVersion": 1, "runID": UUID().uuidString, "startedAt": isoNow(), "status": "failed", "provenance": ["kind": "run-time-observation", "artifactBuiltFromSource": "unknown"], "scope": "input-validation", "errors": [String](), "command": ["argv": [String](), "started": false]]
 var exitStatus: Int32 = 1
 var outputReserved = false
+// These resources are reserved before the verifier starts, rather than learned
+// from a report that may never be written after a timeout or interruption.
+struct LocalizationFixture {
+    let suite: String
+    let directory: URL
+    let progress: URL
+    func cleanup() -> [String: Any] {
+        let domain = suite as CFString
+        // A fresh preferences client avoids this recorder's cache writing an
+        // empty domain back after cleanup. Delete only the reserved test suite.
+        let deletion = Process(); let deletionError = Pipe()
+        deletion.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+        deletion.arguments = ["delete", suite]
+        deletion.standardOutput = FileHandle.nullDevice; deletion.standardError = deletionError
+        var deletionStatus: Int32 = -1; var deletionMessage = ""; var synchronized = false
+        do {
+            try deletion.run()
+            let deadline = Date().addingTimeInterval(5)
+            while deletion.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.02) }
+            if deletion.isRunning {
+                deletion.terminate()
+                let grace = Date().addingTimeInterval(1)
+                while deletion.isRunning && Date() < grace { Thread.sleep(forTimeInterval: 0.02) }
+                if deletion.isRunning { kill(deletion.processIdentifier, SIGKILL) }
+            }
+            deletion.waitUntilExit()
+            deletionMessage = String(decoding: deletionError.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            deletionStatus = deletion.terminationStatus
+            synchronized = deletion.terminationReason == .exit && deletionStatus == 0
+        } catch { deletionMessage = String(describing: error) }
+        let empty = (CFPreferencesCopyKeyList(domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? [String] ?? []).isEmpty
+        // The fixture may already have removed the domain on normal exit.
+        let domainNotFound = deletionStatus == 1 && deletionMessage == "Error: Domain '\(suite)' not found.\nDefaults have not been changed.\n"
+        if domainNotFound && empty { synchronized = true }
+        let preferencesFile = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences/\(suite).plist")
+        var errors: [String] = []
+        if !synchronized || !empty { errors.append("Isolated preferences cleanup failed") }
+        // CFPreferences may retain an empty plist after removing the domain.
+        // The suite was reserved empty before launch and the child has exited.
+        // Remove only its exact regular file; never follow a preference symlink.
+        if synchronized && empty {
+            do {
+                var metadata = stat()
+                let observed = preferencesFile.path.withCString { Darwin.lstat($0, &metadata) }
+                if observed == 0 {
+                    guard metadata.st_mode & S_IFMT == S_IFREG && metadata.st_uid == getuid() else { throw RecorderError("Isolated preferences file is not an owned regular file") }
+                    try fm.removeItem(at: preferencesFile)
+                } else if errno != ENOENT { throw RecorderError("Cannot observe isolated preferences file") }
+            } catch { errors.append("Isolated preferences file cleanup failed: \(error)") }
+        }
+        var preferenceMetadata = stat()
+        let preferenceObserved = preferencesFile.path.withCString { Darwin.lstat($0, &preferenceMetadata) }
+        let preferenceFileAbsent = preferenceObserved == -1 && errno == ENOENT
+        if !preferenceFileAbsent { errors.append("Isolated preferences file absence not established") }
+        do { if fm.fileExists(atPath: directory.path) { try fm.removeItem(at: directory) } }
+        catch { errors.append("Isolated data cleanup failed: \(error)") }
+        var metadata = stat()
+        let observed = directory.path.withCString { Darwin.lstat($0, &metadata) }
+        let absent = observed == -1 && errno == ENOENT
+        if !absent { errors.append("Isolated data directory absence not established") }
+        return ["suite": suite, "directory": directory.path, "progress": progress.path,
+                "deletionExitCode": deletionStatus, "deletionError": deletionMessage,
+                "preferencesEmpty": empty, "preferencesSynchronized": synchronized, "preferencesFileAbsent": preferenceFileAbsent,
+                "directoryAbsent": absent, "passed": errors.isEmpty, "errors": errors]
+    }
+}
+var localizationFixture: LocalizationFixture?
+// Forward cancellation to the owned verifier, allowing its bounded restoration.
+// The recorder never looks up, terminates or kills an application process.
+var cancellationSignal: Int32 = 0
+signal(SIGINT) { cancellationSignal = $0 }
+signal(SIGTERM) { cancellationSignal = $0 }
 // Reserve a leaf once; never read or replace a previous run's manifest/logs.
 func reserveOutput(_ url: URL) throws {
     if !fm.fileExists(atPath: url.path) { try fm.createDirectory(at: url, withIntermediateDirectories: false) }
@@ -207,24 +282,41 @@ do {
     }
     let sourceBefore = try sourceSnapshot(repo, excluding: out); let artifactBefore = try artifactSnapshot(app)
     if let expected = options.expectedID, artifactBefore["identifier"] as? String != expected { throw RecorderError("Bundle identifier does not match expected ID") }
+    if options.localizationCleanup {
+        guard options.expectedID!.range(of: "^[A-Za-z0-9][A-Za-z0-9_.-]*$", options: .regularExpression) != nil else { throw RecorderError("Localization bundle identifier must be a safe preferences namespace") }
+        let suite = options.expectedID! + ".localization-test." + hash(Data(out.path.utf8))
+        guard (CFPreferencesCopyKeyList(suite as CFString, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? [String] ?? []).isEmpty else { throw RecorderError("Isolated preferences suite already contains data; refusing reuse") }
+        let directory = out.appendingPathComponent("fixture-data")
+        try fm.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        localizationFixture = LocalizationFixture(suite: suite, directory: directory, progress: out.appendingPathComponent("localization-progress.json"))
+    }
     manifest["expectedBundleIdentifier"] = options.expectedID ?? "unspecified"
     manifest["project"] = options.project; manifest["sourceBefore"] = sourceBefore; manifest["artifactBefore"] = artifactBefore
     manifest["environment"] = environmentSnapshot(); manifest["scope"] = reportURL == nil ? "exit-code-only; no UI acceptance claim" : "command-exit-and-report-bool; report semantics supplied by caller"
-    var command: [String: Any] = ["argv": options.command, "resolvedExecutable": executable.path, "currentDirectory": repo.path, "started": false, "timeoutSeconds": options.timeout, "timeoutMechanism": "SIGTERM child PID only; after 2 seconds SIGKILL same PID only; no process group or app lookup"]
+    var command: [String: Any] = ["argv": options.command, "resolvedExecutable": executable.path, "currentDirectory": repo.path, "started": false, "timeoutSeconds": options.timeout, "terminationGraceSeconds": options.terminationGrace, "timeoutMechanism": "SIGTERM child PID only; after configured grace SIGKILL same PID only; no process group or app lookup"]
     if let reportURL { manifest["report"] = ["path": reportURL.path, "successField": options.field!, "status": "pending"] }
     let stdoutURL = out.appendingPathComponent("stdout.log"); let stderrURL = out.appendingPathComponent("stderr.log")
     guard fm.createFile(atPath: stdoutURL.path, contents: nil), fm.createFile(atPath: stderrURL.path, contents: nil) else { throw RecorderError("Cannot create log files") }
     let stdout = try FileHandle(forWritingTo: stdoutURL); let stderr = try FileHandle(forWritingTo: stderrURL)
     defer { try? stdout.close(); try? stderr.close() }
     let process = Process(); process.executableURL = executable; process.arguments = Array(options.command.dropFirst()); process.currentDirectoryURL = repo; process.standardOutput = stdout; process.standardError = stderr
+    if let fixture = localizationFixture {
+        var environment = ProcessInfo.processInfo.environment
+        environment["MACOS_LOCALIZATION_TEST_SUITE"] = fixture.suite
+        environment["MACOS_LOCALIZATION_TEST_DIRECTORY"] = fixture.directory.path
+        environment["MACOS_LOCALIZATION_TEST_PROGRESS"] = fixture.progress.path
+        process.environment = environment
+        manifest["localizationFixture"] = ["suite": fixture.suite, "directory": fixture.directory.path, "progress": fixture.progress.path, "cleanup": "pending"]
+    }
     manifest["command"] = command
     try atomicManifest(manifest, at: out)
     try process.run(); command["started"] = true; command["pid"] = process.processIdentifier; command["startedAt"] = isoNow()
-    let deadline = Date().addingTimeInterval(options.timeout); var timedOut = false
+    let deadline = Date().addingTimeInterval(options.timeout); var timedOut = false; var interrupted = false
     while process.isRunning {
-        if Date() >= deadline {
-            timedOut = true; process.terminate()
-            let grace = Date().addingTimeInterval(2)
+        if Date() >= deadline || cancellationSignal != 0 {
+            timedOut = Date() >= deadline; interrupted = cancellationSignal != 0
+            process.terminate()
+            let grace = Date().addingTimeInterval(options.terminationGrace)
             while process.isRunning && Date() < grace { Thread.sleep(forTimeInterval: 0.02) }
             if process.isRunning { kill(process.processIdentifier, SIGKILL) }
             break
@@ -232,13 +324,18 @@ do {
         Thread.sleep(forTimeInterval: 0.02)
     }
     process.waitUntilExit(); try stdout.synchronize(); try stderr.synchronize()
-    command["exitCode"] = process.terminationStatus; command["terminationReason"] = process.terminationReason == .exit ? "exit" : "uncaughtSignal"; command["timedOut"] = timedOut; command["endedAt"] = isoNow()
+    command["exitCode"] = process.terminationStatus; command["terminationReason"] = process.terminationReason == .exit ? "exit" : "uncaughtSignal"; command["timedOut"] = timedOut; command["interrupted"] = interrupted; command["endedAt"] = isoNow()
     manifest["command"] = command
     let skips = try observedSkips(in: stdoutURL, stream: "stdout") + observedSkips(in: stderrURL, stream: "stderr")
     manifest["observedSkips"] = skips
     manifest["evidenceQualifications"] = skips.isEmpty ? [] : ["Command emitted SKIP lines; skipped checks are not established as passed"]
     manifest["logs"] = ["stdout": ["path": stdoutURL.path, "sha256": try hashFile(stdoutURL)], "stderr": ["path": stderrURL.path, "sha256": try hashFile(stderrURL)]]
     var errors: [String] = []
+    if let fixture = localizationFixture {
+        let cleanup = fixture.cleanup(); manifest["localizationFixture"] = cleanup
+        localizationFixture = nil
+        if !(cleanup["passed"] as? Bool ?? false) { errors.append("Localization fixture cleanup failed") }
+    }
     var changed = false
     do { let after = try sourceSnapshot(repo, excluding: out); manifest["sourceAfter"] = after; if after["fingerprintSHA256"] as? String != sourceBefore["fingerprintSHA256"] as? String { changed = true; errors.append("Source changed during command") } }
     catch { changed = true; errors.append("Source after observation failed: \(error)") }
@@ -246,6 +343,7 @@ do {
     catch { changed = true; errors.append("Artifact after observation failed: \(error)") }
     if process.terminationStatus != 0 || process.terminationReason != .exit { errors.append("Child command failed") }
     if timedOut { errors.append("Child command timed out") }
+    if interrupted { errors.append("Child command interrupted") }
     if let reportURL {
         var report: [String: Any] = ["path": reportURL.path, "successField": options.field!, "status": "failed"]
         do {
@@ -268,11 +366,19 @@ do {
         manifest["report"] = report
     }
     manifest["errors"] = errors
-    manifest["status"] = (process.terminationStatus != 0 || process.terminationReason != .exit || timedOut) ? "failed" : changed ? "invalidated" : errors.isEmpty ? "passed" : "failed"
+    manifest["status"] = (process.terminationStatus != 0 || process.terminationReason != .exit || timedOut || interrupted) ? "failed" : changed ? "invalidated" : errors.isEmpty ? "passed" : "failed"
     exitStatus = errors.isEmpty ? 0 : 1
 } catch {
     var errors = manifest["errors"] as? [String] ?? []; errors.append(String(describing: error)); manifest["errors"] = errors
     FileHandle.standardError.write(Data("VerificationEvidence: \(error)\n".utf8))
+}
+if let fixture = localizationFixture {
+    let cleanup = fixture.cleanup(); manifest["localizationFixture"] = cleanup
+    if !(cleanup["passed"] as? Bool ?? false) {
+        var errors = manifest["errors"] as? [String] ?? []; errors.append("Localization fixture cleanup failed"); manifest["errors"] = errors
+    }
+    // This path is only reached before launch or after the owned child exited.
+    manifest["status"] = "failed"; exitStatus = 1
 }
 manifest["endedAt"] = isoNow()
 if let out = output {

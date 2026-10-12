@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "product": "DockAutoHide",
+  "appName": "DockAutoHide",
+  "executable": "DockAutoHide",
+  "bundleIdentifier": "io.github.nshcr.DockAutoHide",
+  "repository": "mayflies-app/DockAutoHide",
+  "caskToken": "dockautohide",
+  "description": "Auto-hide the Dock only when a window would cover it",
+  "minimumSystemVersion": "13.5",
+  "buildSystem": "xcode",
+  "architectures": [
+    "arm64",
+    "x86_64",
+    "universal"
+  ],
+  "versionFile": "VERSION",
+  "releaseAdapter": "scripts/app.py",
+  "paths": {
+    "project": "DockAutoHide.xcodeproj",
+    "entitlements": "DockAutoHide/DockAutoHide.entitlements",
+    "sharedRelease": "scripts/lib/release"
+  },
+  "xcode": {
+    "scheme": "DockAutoHide",
+    "testScripts": [
+      "tools/test_launch_at_login.sh",
+      "tools/test_login_menu.sh",
+      "tools/test_multi_display_overlap.sh"
+    ]
+  }
+}

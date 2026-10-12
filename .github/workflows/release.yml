@@ -1,207 +1,72 @@
-name: Build and Release
+name: macOS release
 
 on:
   workflow_dispatch:
     inputs:
-      marketing_version:
-        description: "SemVer for MARKETING_VERSION (e.g. 1.2.3 or 1.2.3-beta.1)"
-        required: true
-      sign:
-        description: "Enable code signing step (if false, signing and notarization are skipped)"
+      version:
+        description: Version (empty reads VERSION)
+        type: string
         required: false
-        default: true
+      dry_run:
+        description: Preview only; no build, signing, Apple or GitHub writes
         type: boolean
-      notarize:
-        description: "Enable notarization step (requires signing)"
-        required: false
         default: true
+      publish:
+        description: Publish verified assets and update the Homebrew cask
         type: boolean
+        default: false
 
 permissions:
-  contents: write
+  contents: read
 
 env:
-  APP_NAME: DockAutoHide
-  SCHEME: DockAutoHide
-  PROJECT: DockAutoHide.xcodeproj
-  BUILD_NUMBER: ${{ github.run_number }}
+  DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
-  preflight:
-    name: Preflight
-    runs-on: macos-26
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Resolve version
-        env:
-          MARKETING_VERSION_INPUT: ${{ inputs.marketing_version }}
-        run: bash scripts/ci/resolve_version.sh
-
-      - name: Validate release options
-        env:
-          SIGN_INPUT: ${{ inputs.sign }}
-          NOTARIZE_INPUT: ${{ inputs.notarize }}
-        run: bash scripts/ci/validate_release_options.sh
-
-      - name: Validate immutable release state
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash scripts/ci/check_release_publish_state.sh
-
-      - name: Ensure notarization secrets
-        if: ${{ inputs.notarize == true }}
-        env:
-          APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
-          APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
-          APPLE_NOTARIZATION_PRIVATE_KEY: ${{ secrets.APPLE_NOTARIZATION_PRIVATE_KEY }}
-        run: bash scripts/ci/ensure_notarization_secrets.sh
-
-  build:
-    name: Build (${{ matrix.arch }})
-    runs-on: macos-26
-    needs: preflight
-    env:
-      ARCH_LABEL: ${{ matrix.arch }}
-    strategy:
-      fail-fast: false
-      matrix:
-        arch:
-          - arm64
-          - x86_64
-          - universal
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Resolve version
-        env:
-          MARKETING_VERSION_INPUT: ${{ inputs.marketing_version }}
-        run: bash scripts/ci/resolve_version.sh
-
-      - name: Resolve build arch
-        run: bash scripts/ci/resolve_arch.sh
-
-      - name: Update version settings (local)
-        run: python3 scripts/ci/update_version_settings.py
-
-      - name: Ensure signing secrets
-        if: ${{ inputs.sign == true }}
-        env:
-          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
-          MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
-        run: bash scripts/ci/ensure_signing_secrets.sh
-
-      - name: Setup signing keychain
-        if: ${{ inputs.sign == true }}
-        env:
-          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
-        run: bash scripts/ci/setup_keychain.sh
-
-      - name: Archive (signed) (${{ matrix.arch }})
-        if: ${{ inputs.sign == true }}
-        env:
-          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
-          MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
-        run: bash scripts/ci/archive.sh
-
-      - name: Archive (unsigned) (${{ matrix.arch }})
-        if: ${{ inputs.sign != true }}
-        run: bash scripts/ci/archive.sh
-
-      - name: Verify signature
-        if: ${{ inputs.sign == true }}
-        run: bash scripts/ci/verify_signature.sh
-
-      - name: Create DMG
-        run: bash scripts/ci/create_dmg.sh
-
-      - name: Notarize DMG
-        if: ${{ inputs.sign == true && inputs.notarize == true }}
-        env:
-          APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
-          APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
-          APPLE_NOTARIZATION_PRIVATE_KEY: ${{ secrets.APPLE_NOTARIZATION_PRIVATE_KEY }}
-        run: bash scripts/ci/notarize_dmg.sh
-
-      - name: Create DMG checksum
-        run: bash scripts/ci/create_dmg_checksum.sh
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: dist-${{ matrix.arch }}
-          path: dist/*
-          if-no-files-found: error
-          overwrite: true
-
   release:
-    name: Release
-    runs-on: macos-26
-    needs: build
+    runs-on: xcode-27
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Resolve version
-        env:
-          MARKETING_VERSION_INPUT: ${{ inputs.marketing_version }}
-        run: bash scripts/ci/resolve_version.sh
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v8
+      - uses: actions/checkout@v6
         with:
-          pattern: dist-*
-          path: dist
-          merge-multiple: true
-
-      - name: Create combined checksums
-        run: bash scripts/ci/create_checksums.sh
-
-      - name: Create GitHub Release
+          persist-credentials: false
+      - name: Preview
+        if: inputs.dry_run
         env:
+          VERSION_INPUT: ${{ inputs.version }}
+          PUBLISH_INPUT: ${{ inputs.publish }}
+        run: |
+          args=(release --dry-run --build "${GITHUB_RUN_NUMBER}")
+          if [[ -n "$VERSION_INPUT" ]]; then args+=(--version "$VERSION_INPUT"); fi
+          if [[ "$PUBLISH_INPUT" == true ]]; then args+=(--publish); fi
+          ./scripts/app.py "${args[@]}"
+      - name: Build, sign and notarize; optionally publish and update the cask
+        if: '!inputs.dry_run'
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+          PUBLISH_INPUT: ${{ inputs.publish }}
           GH_TOKEN: ${{ github.token }}
-        run: bash scripts/ci/create_github_release.sh
-
-  update_homebrew_tap:
-    name: Update Homebrew Tap
-    runs-on: macos-26
-    needs: release
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Resolve version
-        env:
-          MARKETING_VERSION_INPUT: ${{ inputs.marketing_version }}
-        run: bash scripts/ci/resolve_version.sh
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v8
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+          APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
+          APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
+          APPLE_NOTARIZATION_PRIVATE_KEY: ${{ secrets.APPLE_NOTARIZATION_PRIVATE_KEY }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          args=(release --execute --build "${GITHUB_RUN_NUMBER}")
+          if [[ -n "$VERSION_INPUT" ]]; then args+=(--version "$VERSION_INPUT"); fi
+          if [[ "$PUBLISH_INPUT" == true ]]; then args+=(--publish); fi
+          ./scripts/app.py "${args[@]}"
+      - uses: actions/upload-artifact@v6
+        if: always() && !inputs.dry_run
         with:
-          pattern: dist-*
-          path: dist
-          merge-multiple: true
-
-      - name: Create Homebrew Cask
-        run: bash scripts/ci/create_homebrew_cask.sh
-
-      - name: Verify current workflow release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash scripts/ci/verify_github_release.sh
-
-      - name: Checkout homebrew tap
-        uses: actions/checkout@v6
-        with:
-          repository: nshcr/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: homebrew-tap
-
-      - name: Update homebrew tap cask
-        run: bash scripts/ci/update_homebrew_tap.sh homebrew-tap
+          name: release
+          path: dist/release
+          if-no-files-found: warn

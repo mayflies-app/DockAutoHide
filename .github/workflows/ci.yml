@@ -1,0 +1,24 @@
+name: macOS CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+
+jobs:
+  test:
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - run: python3 -B scripts/lib/release/ci_prepare.py verify-toolchain
+      - run: ./scripts/app.py test
+      - run: ./scripts/app.py build --sign ad-hoc
+      - run: ./scripts/app.py release --dry-run

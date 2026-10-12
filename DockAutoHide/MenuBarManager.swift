@@ -3,15 +3,24 @@ import Combine
 import SwiftUI
 
 /// Menu bar controller for the status item and menu.
-class MenuBarManager {
+@MainActor
+class MenuBarManager: NSObject, NSMenuDelegate, NSMenuItemValidation {
   private var statusItem: NSStatusItem?
+  private let statusItemFactory: () -> NSStatusItem?
   private let dockManager: DockManager
   private let launchAtLoginManager: LaunchAtLoginManager
   private var cancellables = Set<AnyCancellable>()
 
-  init(dockManager: DockManager, launchAtLoginManager: LaunchAtLoginManager) {
+  init(
+    dockManager: DockManager, launchAtLoginManager: LaunchAtLoginManager,
+    statusItemFactory: (() -> NSStatusItem?)? = nil
+  ) {
     self.dockManager = dockManager
     self.launchAtLoginManager = launchAtLoginManager
+    self.statusItemFactory = statusItemFactory ?? {
+      NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    }
+    super.init()
     setupMenuBar()
 
     // Observe DockManager updates.
@@ -24,12 +33,24 @@ class MenuBarManager {
         }
       }
       .store(in: &cancellables)
+
+    launchAtLoginManager.objectWillChange
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] _ in
+        DispatchQueue.main.async { self?.updateMenu() }
+      }
+      .store(in: &cancellables)
+  }
+
+  // Refresh visible login rows when a user opens the menu after a system change.
+  func menuWillOpen(_ menu: NSMenu) {
+    launchAtLoginManager.refreshStatus()
+    configureLoginItems(in: menu)
   }
 
   /// Configures the status item and menu.
   private func setupMenuBar() {
-    statusItem = NSStatusBar.system
-      .statusItem(withLength: NSStatusItem.squareLength)
+    statusItem = statusItemFactory()
 
     if let button = statusItem?.button {
       button.image = NSImage(
@@ -42,9 +63,10 @@ class MenuBarManager {
     updateMenu()
   }
 
-  /// Rebuilds the menu.
-  private func updateMenu() {
+  /// Builds the menu independently of attaching a real status item.
+  func makeMenu() -> NSMenu {
     let menu = NSMenu()
+    menu.delegate = self
 
     let isAuthorized = dockManager.isAuthorized
 
@@ -115,9 +137,23 @@ class MenuBarManager {
       keyEquivalent: ""
     )
     launchAtLoginItem.target = self
-    launchAtLoginItem.state = launchAtLoginManager.isEnabled ? .on : .off
-    launchAtLoginItem.isEnabled = isAuthorized
+    launchAtLoginItem.tag = 1001
     menu.addItem(launchAtLoginItem)
+    let detailItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    detailItem.tag = 1002
+    detailItem.isEnabled = false
+    menu.addItem(detailItem)
+    let loginErrorItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    loginErrorItem.tag = 1003
+    loginErrorItem.isEnabled = false
+    menu.addItem(loginErrorItem)
+    let settingsItem = NSMenuItem(
+      title: "Open Login Items Settings…", action: #selector(openLoginItemsSettings), keyEquivalent: ""
+    )
+    settingsItem.tag = 1004
+    settingsItem.target = self
+    menu.addItem(settingsItem)
+    configureLoginItems(in: menu)
 
     menu.addItem(NSMenuItem.separator())
 
@@ -138,6 +174,11 @@ class MenuBarManager {
     quitItem.target = self
     menu.addItem(quitItem)
 
+    return menu
+  }
+
+  private func updateMenu() {
+    let menu = makeMenu()
     // Setting the status item's menu while the menu/button is being laid out
     // or while the menu is open can trigger AppKit layout recursion. If the
     // button is highlighted (menu open), defer the replacement to the next
@@ -149,6 +190,39 @@ class MenuBarManager {
     } else {
       statusItem?.menu = menu
     }
+  }
+
+  func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    if item.tag == 1001 {
+      return launchAtLoginManager.canToggle
+    }
+    // Preserve AppKit's existing automatic enabling for the other actions.
+    return true
+  }
+
+  private func configureLoginItems(in menu: NSMenu) {
+    let manager = launchAtLoginManager
+    if let item = menu.item(withTag: 1001) {
+      switch manager.status {
+      case .enabled: item.state = .on
+      case .requiresApproval: item.state = .mixed
+      case .notRegistered, .unavailable: item.state = .off
+      }
+      item.isEnabled = manager.canToggle
+    }
+    if let item = menu.item(withTag: 1002) {
+      item.title = manager.statusDetail ?? ""
+      item.isHidden = manager.statusDetail == nil
+    }
+    if let item = menu.item(withTag: 1003) {
+      item.title = manager.lastErrorMessage.map { "Login Item Error: \($0)" } ?? ""
+      item.isHidden = manager.lastErrorMessage == nil
+    }
+    menu.item(withTag: 1004)?.isHidden = manager.status != .requiresApproval && manager.status != .unavailable
+  }
+
+  @objc private func openLoginItemsSettings() {
+    launchAtLoginManager.openSettings()
   }
 
   /// Toggles smart switching.

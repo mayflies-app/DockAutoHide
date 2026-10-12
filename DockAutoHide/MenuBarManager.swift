@@ -62,10 +62,14 @@ class MenuBarManager: NSObject, NSMenuDelegate, NSMenuItemValidation {
     statusItem = statusItemFactory()
 
     if let button = statusItem?.button {
-      button.image = NSImage(
+      let image = NSImage(
         systemSymbolName: "dock.rectangle",
         accessibilityDescription: localization.text(.appName)
-      )
+      )?.withSymbolConfiguration(.init(pointSize: 14, weight: .medium))
+      image?.isTemplate = true
+      button.image = image
+      button.title = ""
+      button.imagePosition = .imageOnly
       button.toolTip = localization.text(.appName)
       button.setAccessibilityLabel(localization.text(.appName))
     }

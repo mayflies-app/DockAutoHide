@@ -48,19 +48,23 @@ private struct SystemLaunchAtLoginService: LaunchAtLoginService {
 class LaunchAtLoginManager: ObservableObject {
   @Published private(set) var status: LaunchAtLoginStatus = .notRegistered
   @Published private(set) var lastErrorMessage: String?
+  private let localization: AppLocalization
   private let service: any LaunchAtLoginService
 
   var isEnabled: Bool { status == .enabled }
   var canToggle: Bool { status != .unavailable }
   var statusDetail: String? {
     switch status {
-    case .requiresApproval: return "Launch at login requires approval in System Settings."
-    case .unavailable: return "Launch at login is unavailable for this app."
+    case .requiresApproval: return localization.text(.loginApproval)
+    case .unavailable: return localization.text(.loginUnavailable)
     case .enabled, .notRegistered: return nil
     }
   }
 
-  init(service: (any LaunchAtLoginService)? = nil) {
+  init(
+    service: (any LaunchAtLoginService)? = nil, localization: AppLocalization? = nil
+  ) {
+    self.localization = localization ?? .shared
     self.service = service ?? SystemLaunchAtLoginService()
     refreshStatus()
   }

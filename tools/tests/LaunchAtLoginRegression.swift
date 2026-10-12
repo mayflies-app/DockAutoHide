@@ -30,6 +30,12 @@ private final class FakeLoginService: LaunchAtLoginService {
 private enum LoginRegression {
   @MainActor static func main() {
     DockLogger.isEnabled = false
+    let suite = "DockAutoHide.LoginRegression.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let localization = AppLocalization(
+      configStore: AppConfigurationStore(defaults: defaults), preferredLanguages: ["en"]
+    )
     var checks = 0
     func check(_ condition: @autoclosure () -> Bool, _ message: String) {
       precondition(condition(), message)
@@ -38,13 +44,13 @@ private enum LoginRegression {
     for state in [LaunchAtLoginStatus.notRegistered, .enabled, .requiresApproval, .unavailable] {
       let service = FakeLoginService()
       service.status = state
-      let manager = LaunchAtLoginManager(service: service)
+      let manager = LaunchAtLoginManager(service: service, localization: localization)
       check(manager.status == state, "Initial status must reflect the actual service")
       check(manager.isEnabled == (state == .enabled), "Enabled must derive from actual state")
       check(service.registers == 0 && service.unregisters == 0 && service.settings == 0, "Status reads must not mutate service")
     }
     let service = FakeLoginService()
-    let manager = LaunchAtLoginManager(service: service)
+    let manager = LaunchAtLoginManager(service: service, localization: localization)
     service.nextStatus = .requiresApproval
     manager.setLaunchAtLogin(true)
     check(manager.status == .requiresApproval && !manager.isEnabled, "Pending approval must not show enabled")

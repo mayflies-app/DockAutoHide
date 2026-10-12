@@ -1,0 +1,3 @@
+"CFBundleName" = "Dock Auto Hide";
+"CFBundleDisplayName" = "Dock Auto Hide";
+"NSAppleEventsUsageDescription" = "Dock Auto Hide needs permission to control Dock auto-hide through System Events.";

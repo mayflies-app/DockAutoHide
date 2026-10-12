@@ -34,11 +34,17 @@ import Foundation
     // Prohibited activation creates no Dock icon or windows; the real app never runs.
     NSApplication.shared.setActivationPolicy(.prohibited)
     DockLogger.isEnabled = false
+    let suite = "DockAutoHide.LoginMenuRegression.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let localization = AppLocalization(
+      configStore: AppConfigurationStore(defaults: defaults), preferredLanguages: ["en"]
+    )
     let dock = DockManager()
     let service = MenuLoginService()
-    let login = LaunchAtLoginManager(service: service)
+    let login = LaunchAtLoginManager(service: service, localization: localization)
     let controller = MenuBarManager(
-      dockManager: dock, launchAtLoginManager: login, statusItemFactory: { nil }
+      dockManager: dock, launchAtLoginManager: login, statusItemFactory: { nil }, localization: localization
     )
     var checks = 0
     func check(_ condition: @autoclosure () -> Bool, _ message: String) {
@@ -65,7 +71,10 @@ import Foundation
     login.setLaunchAtLogin(true)
     controller.menuWillOpen(menu)
     check(!menu.item(withTag: 1003)!.isHidden && menu.item(withTag: 1003)!.title.contains("Fixture login failure"), "Operation failures remain visible in the actual menu")
-    check(dock.policyMutations == 0 && dock.permissionRequests == 0, "Menu actions leave Dock and permission boundaries untouched")
+    localization.setLanguage(.simplifiedChinese)
+    let translated = controller.makeMenu()
+    check(translated.item(withTag: 1003)!.title == "登录项错误：Fixture login failure", "Existing system error is retained under a translated prefix")
+    check(dock.policyMutations == 0 && dock.permissionRequests == 0, "Localization leaves Dock and permission boundaries untouched")
     print("isolated AppKit login menu regressions passed (\(checks) checks); no real status item, Dock, or login mutation")
   }
 }

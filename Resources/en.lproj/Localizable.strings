@@ -1,0 +1,21 @@
+/* Dock Auto Hide interface strings. */
+"app.name" = "Dock Auto Hide";
+"menu.smartSwitching" = "Smart Switching";
+"menu.dockAutoHide" = "Dock Auto-Hide";
+"status.autoHideOn" = "Status: Auto-Hide On";
+"status.autoHideOff" = "Status: Auto-Hide Off";
+"status.permissionRequired" = "Status: System Events Permission Required";
+"error.prefix" = "Error: ";
+"menu.requestPermission" = "Request System Events Permission";
+"menu.launchAtLogin" = "Launch at Login";
+"menu.loginSettings" = "Open Login Items Settings…";
+"error.loginPrefix" = "Login Item Error: ";
+"menu.language" = "Interface Language";
+"menu.versionPrefix" = "Version: ";
+"menu.quit" = "Quit";
+"login.approvalRequired" = "Launch at login requires approval in System Settings.";
+"login.unavailable" = "Launch at login is unavailable for this app.";
+"error.featurePermissionRequired" = "System Events permission is required to use this feature.";
+"error.dockPermissionRequired" = "System Events permission is required to control the Dock.";
+"error.restoreFailed" = "Failed to restore Dock auto-hide before quitting.";
+"error.applyFailed" = "Failed to apply Dock auto-hide via System Events.";

@@ -1,0 +1,21 @@
+/* Dock Auto Hide interface strings. */
+"app.name" = "Dock 自动隐藏";
+"menu.smartSwitching" = "智能切换";
+"menu.dockAutoHide" = "自动隐藏 Dock";
+"status.autoHideOn" = "状态：自动隐藏已开启";
+"status.autoHideOff" = "状态：自动隐藏已关闭";
+"status.permissionRequired" = "状态：需要“系统事件”权限";
+"error.prefix" = "错误：";
+"menu.requestPermission" = "请求“系统事件”权限";
+"menu.launchAtLogin" = "登录时启动";
+"menu.loginSettings" = "打开登录项设置…";
+"error.loginPrefix" = "登录项错误：";
+"menu.language" = "界面语言";
+"menu.versionPrefix" = "版本：";
+"menu.quit" = "退出";
+"login.approvalRequired" = "登录时启动需要在系统设置中批准。";
+"login.unavailable" = "此应用暂时无法使用登录时启动。";
+"error.featurePermissionRequired" = "使用此功能需要“系统事件”权限。";
+"error.dockPermissionRequired" = "控制 Dock 需要“系统事件”权限。";
+"error.restoreFailed" = "退出前恢复 Dock 自动隐藏失败。";
+"error.applyFailed" = "通过“系统事件”设置 Dock 自动隐藏失败。";

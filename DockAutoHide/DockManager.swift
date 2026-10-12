@@ -7,9 +7,11 @@ final class DockManager: ObservableObject {
   @Published var smartEnabled: Bool
   @Published var manualAutoHideEnabled: Bool
   @Published private(set) var currentAutoHideEnabled: Bool
-  @Published private(set) var lastErrorMessage: String?
+  @Published private var lastError: AppText?
+  var lastErrorMessage: String? { lastError.map { localization.text($0) } }
   @Published private(set) var authorizationState: DockAuthorizationState
 
+  private let localization: AppLocalization
   private let prefsClient: DockPreferencesClient
   private let automationService: DockAutomationControlling
   private let authorizationManager: DockAuthorizationManager
@@ -35,8 +37,10 @@ final class DockManager: ObservableObject {
     automationService: DockAutomationControlling = DockAutomationService(),
     authorizationManager: DockAuthorizationManager = DockAuthorizationManager(),
     configStore: AppConfigurationStore = AppConfigurationStore(),
-    engine: SmartPolicyEngine? = nil
+    engine: SmartPolicyEngine? = nil,
+    localization: AppLocalization? = nil
   ) {
+    self.localization = localization ?? .shared
     self.prefsClient = prefsClient
     self.automationService = automationService
     self.authorizationManager = authorizationManager
@@ -51,7 +55,7 @@ final class DockManager: ObservableObject {
     self.smartEnabled = storedSmartEnabled
     self.manualAutoHideEnabled = storedManualEnabled ?? false
     self.currentAutoHideEnabled = false
-    self.lastErrorMessage = nil
+    self.lastError = nil
     self.authorizationState = authorizationManager.state
     self.evaluator.isDockAutoHideEnabled = { [weak self] in
       self?.currentAutoHideEnabled ?? false
@@ -81,8 +85,7 @@ final class DockManager: ObservableObject {
 
   func setSmartEnabled(_ enabled: Bool) {
     guard isAuthorized else {
-      lastErrorMessage =
-        "System Events permission is required to use this feature."
+      lastError = .featurePermissionRequired
       DockLogger.log("Smart toggle ignored: not authorized")
       return
     }
@@ -100,8 +103,7 @@ final class DockManager: ObservableObject {
 
   func setManualAutoHideEnabled(_ enabled: Bool) {
     guard isAuthorized else {
-      lastErrorMessage =
-        "System Events permission is required to use this feature."
+      lastError = .featurePermissionRequired
       DockLogger.log("Manual toggle ignored: not authorized")
       return
     }
@@ -131,12 +133,12 @@ final class DockManager: ObservableObject {
     let success = automationService.setAutoHide(desired)
     if success {
       currentAutoHideEnabled = desired
-      lastErrorMessage = nil
+      lastError = nil
       DockLogger.log(
         "Quit restore success: autohide=\(desired), source=manual, reason=appTerminate"
       )
     } else {
-      lastErrorMessage = "Failed to restore Dock auto-hide before quitting."
+      lastError = .restoreFailed
       DockLogger.log(
         "Quit restore failed: autohide=\(desired), source=manual, reason=appTerminate"
       )
@@ -164,7 +166,7 @@ final class DockManager: ObservableObject {
     authorizationState = state
     switch state {
     case .authorized:
-      lastErrorMessage = nil
+      lastError = nil
       let storedSmartEnabled = configStore.readSmartEnabled() ?? false
       smartEnabled = storedSmartEnabled
       if let systemValue = automationService.readAutoHide() {
@@ -187,8 +189,7 @@ final class DockManager: ObservableObject {
       cancelPendingApply()
       smartEnabled = false
       manualAutoHideEnabled = false
-      lastErrorMessage =
-        "System Events permission is required to control the Dock."
+      lastError = .dockPermissionRequired
     }
   }
 
@@ -309,8 +310,7 @@ final class DockManager: ObservableObject {
     reason: String
   ) {
     guard isAuthorized else {
-      lastErrorMessage =
-        "System Events permission is required to control the Dock."
+      lastError = .dockPermissionRequired
       return
     }
     if currentAutoHideEnabled == enabled {
@@ -370,12 +370,12 @@ final class DockManager: ObservableObject {
     let success = automationService.setAutoHide(desired)
     if success {
       currentAutoHideEnabled = desired
-      lastErrorMessage = nil
+      lastError = nil
       DockLogger.log(
         "Apply success: autohide=\(desired), source=\(source.label), reason=\(reason)"
       )
     } else {
-      lastErrorMessage = "Failed to apply Dock auto-hide via System Events."
+      lastError = .applyFailed
       DockLogger.log(
         "Apply failed: autohide=\(desired), source=\(source.label), reason=\(reason)"
       )

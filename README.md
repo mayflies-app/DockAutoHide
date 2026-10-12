@@ -1,99 +1,54 @@
-# DockAutoHide
+# Dock Auto Hide
 
-**Auto-hide the Dock only when a window would cover it.**
+Keep the Dock visible until a window needs its space. Dock Auto Hide is a native macOS menu bar app that controls Dock auto-hide from window overlap.
 
-DockAutoHide is a tiny macOS menu bar utility that watches for windows overlapping the Dock and flips auto-hide on the fly. It's a simple, focused stopgap for people who want the Dock visible most of the time, but out of the way when a window needs the space — until macOS offers this behavior natively.
+## Features
 
-## Demo Video
+- Smart Switching hides the Dock when a window overlaps it and shows it when the space is clear.
+- Manual control sets Dock auto-hide when Smart Switching is off.
+- Menu status shows the actual Dock state and explains permission or login-item errors.
+- English and Simplified Chinese interfaces update immediately.
+- Optional Launch at Login uses macOS Login Items.
 
-https://github.com/user-attachments/assets/2f6a8341-6084-4d71-a310-c60caff6d269
+## Requirements
 
-## Why You Might Want This
-
-- You keep the Dock visible for quick app switching, but hate losing content space when windows touch the screen edge.
-- You don't want to manually toggle auto-hide all day.
-- You want a tiny, menu bar–only helper that quietly handles it for you.
-
-## Key Features
-
-- **Smart Switching**: automatically toggles Dock auto-hide based on window overlap.
-- **Manual override**: a one-click menu item to force Dock auto-hide on/off.
-- **Menu bar only**: no Dock icon, no window.
-- **Launch at Login** support.
-- **Local-only** behavior with no network access.
-
-## Experimental Status
-
-This is a simple tool but still in an early, experimental stage. It has not been tested across enough real-world setups, and some interactions may feel rough or inconsistent.
-
-That said, it is fully usable: the developer already runs it daily. The goal is to provide a practical, lightweight alternative until Apple ships an official feature like this.
-
-Feedback is hugely appreciated — especially reports of edge cases.
+macOS 13.5 or later, on Apple Silicon or Intel. System Events Automation permission is required for Dock control. Optional Screen Recording permission improves the window metadata available to Smart Switching.
 
 ## Installation
 
-### Option A: Homebrew Tap (Recommended)
+Install the published release with Homebrew:
 
 ```sh
-brew tap nshcr/tap
+brew tap mayflies-app/tap
 brew install --cask dockautohide
 ```
 
-- This is the recommended installation method.
-- Homebrew installs the app from the dedicated [nshcr/homebrew-tap](https://github.com/nshcr/homebrew-tap) repository.
-
-### Option B: GitHub Releases (DMG, Apple Silicon + Intel)
-
-- Releases are built by [GitHub Actions](https://github.com/nshcr/DockAutoHide/actions/workflows/release.yml) and published as architecture‑specific DMGs.
-- Download the DMG that matches your Mac architecture from [GitHub Releases](https://github.com/nshcr/DockAutoHide/releases).
-- Open the DMG and drag `DockAutoHide.app` into `/Applications`.
-
-### Option C: Build from source
-
-1. Open `DockAutoHide.xcodeproj` in Xcode.
-2. Select the `DockAutoHide` scheme.
-3. Build and run.
+Homebrew installs the version published in the [tap](https://github.com/mayflies-app/homebrew-tap). To use the source in this checkout, follow [Development](docs/development.md).
 
 ## Usage
 
-- Click the menu bar icon to open the menu.
-- **Smart Switching** toggles automatic behavior on/off.
-- **Dock Auto-Hide** manually toggles the Dock (disabled while Smart Switching is on).
-- **Status** shows the current Dock auto-hide state or authorization status.
-- **Request System Events Permission** appears if automation permission is missing.
-- **Launch at Login** toggles startup behavior.
-- **Quit** exits the app.
+Open Dock Auto Hide and click its menu bar icon:
 
-## System Requirements
+- Enable **Smart Switching** for automatic control.
+- Use **Dock Auto-Hide** for manual control with Smart Switching off.
+- Choose **Interface Language → 简体中文** or **English** to change the interface.
+- Enable **Launch at Login** to start the app when signing in. A mixed checkmark indicates approval is required; **Open Login Items Settings…** opens the macOS approval page.
+- Choose **Quit** to exit. The app restores the selected manual auto-hide setting when it has Automation permission.
 
-- macOS 13.5+ (deployment target set in the Xcode project).
-- Apple Silicon or Intel Mac.
-
-## Permissions
-
-DockAutoHide uses two macOS permission areas:
-
-- **Automation (System Events)**: required. The app uses Apple Events to read and toggle Dock auto-hide. Without this permission, DockAutoHide cannot control the Dock.
-- **Screen Recording**: optional, but recommended for best Smart Switching behavior. It helps macOS provide more accurate window metadata for overlap detection.
-
-The app does **not** proactively request Screen Recording permission. If you want the best Smart Switching accuracy, add DockAutoHide manually in **System Settings → Privacy & Security → Screen Recording**.
-
-Without Screen Recording permission, DockAutoHide still works in the vast majority of setups:
-
-- Manual Dock auto-hide control still works normally.
-- Smart Switching still uses live screen geometry and Dock preferences, but may lose some live Dock span metadata and fall back to the current display context.
-- In more complex setups, especially some multi-display arrangements, Smart Switching can be a little less precise.
-
-In short: enabling Screen Recording gives DockAutoHide its best behavior, but leaving it disabled should still be good enough for most everyday use.
+The app has no main window or Dock icon. Status and error rows explain why a control is unavailable.
 
 ## Privacy
 
-DockAutoHide performs all processing locally. It does not collect analytics or transmit data over the network.
+Dock Auto Hide processes window and display geometry locally. It does not capture screenshots or send data over the network. Allow System Events control in **System Settings → Privacy & Security → Automation**. You can grant optional Screen Recording access in **System Settings → Privacy & Security → Screen Recording**. See [Privacy](docs/privacy.md) for details.
 
-## Contributing & Feedback
+## Development
 
-Contributions of any kind are very welcome. If you try DockAutoHide, I would love to hear your feedback, bug reports, and suggestions. Even small notes about what feels off or where it fails are valuable.
+Use `./scripts/app.py build`, `run`, `test`, `package` and `release --dry-run`, or open `DockAutoHide.xcodeproj` in Xcode. See [Development](docs/development.md), [Localization](docs/localization.md) and [Releasing](docs/releasing.md).
+
+## Contributing
+
+See [Contributing](CONTRIBUTING.md). Maintained by [Mayflies](https://github.com/mayflies-app); support is available through [GitHub Sponsors](https://github.com/sponsors/nshcr).
 
 ## License
 
-MIT
+[MIT](LICENSE).

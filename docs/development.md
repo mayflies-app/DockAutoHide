@@ -26,7 +26,7 @@ Open `DockAutoHide.xcodeproj` and select the `DockAutoHide` scheme. Use Run to d
 
 ## Product Checks
 
-`./scripts/app.py test` runs the regression harnesses in `tools/`. They cover login-service states, menu actions, localization, display selection, Dock geometry caches, coordinate handling, invalid window records and policy start/stop behavior. Services and window/display snapshots are injected; these checks do not alter real Dock preferences or login items.
+`./scripts/app.py test` runs the four offline regression harnesses declared in the top-level `testScripts` list in `macos-app.json`: `tools/test_launch_at_login.sh`, `tools/test_login_menu.sh`, `tools/test_multi_display_overlap.sh` and `tools/test_localization.sh`. They cover login-service states, menu actions, localization, display selection, Dock geometry caches, coordinate handling, invalid window records and policy start/stop behavior. Services and window/display snapshots are injected; these checks do not alter real Dock preferences or login items.
 
 For real bilingual menu acceptance against a prebuilt app, use the common native entrypoint:
 
@@ -37,13 +37,4 @@ For real bilingual menu acceptance against a prebuilt app, use the common native
 
 This check needs an unlocked, idle desktop and existing permissions. It records the visible menus and restores the original language and running state on completion or interruption. See [Localization](localization.md) for prerequisites, evidence and cleanup behavior.
 
-Run an affected isolated harness directly when narrowing a failure:
-
-```sh
-bash tools/test_launch_at_login.sh
-bash tools/test_login_menu.sh
-bash tools/test_multi_display_overlap.sh
-bash tools/test_localization.sh
-```
-
-Set `VERBOSE=1` for decision logs. Keep results in `TestResults/` or a temporary directory. Check actual Automation authorization, login registration and physical multi-display overlap with the real app when changes affect those system boundaries.
+Run an affected isolated harness directly when narrowing a failure; set `VERBOSE=1` for decision logs. Keep results in `TestResults/` or a temporary directory. Check actual Automation authorization, login registration and physical multi-display overlap with the real app when changes affect those system boundaries.

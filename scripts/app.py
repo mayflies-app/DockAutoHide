@@ -84,6 +84,13 @@ def load_config(root):
     if paths.get("entitlements"):
         if not isinstance(plistlib.loads(relative_file(root, paths["entitlements"]).read_bytes()), dict):
             raise ValueError("Entitlements must be a plist dictionary")
+    test_scripts = config.get("testScripts", [])
+    if not isinstance(test_scripts, list):
+        raise ValueError("testScripts must be a list of product regression scripts")
+    for script in test_scripts:
+        path = relative_file(root, script)
+        if not path.is_file() or path.suffix not in (".sh", ".py"):
+            raise ValueError("Product test scripts must be .sh or .py files")
     if config["buildSystem"] == "xcode":
         project = relative_file(root, paths.get("project"))
         if not project.is_dir() or project.suffix != ".xcodeproj":
@@ -91,12 +98,8 @@ def load_config(root):
         xcode = config.get("xcode", {})
         if not isinstance(xcode, dict) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_. -]*", str(xcode.get("scheme", ""))):
             raise ValueError("Invalid Xcode scheme")
-        scripts = xcode.get("testScripts")
-        if not isinstance(scripts, list) or not scripts:
-            raise ValueError("xcode.testScripts must declare product test scripts")
-        for script in scripts:
-            if not relative_file(root, script).is_file():
-                raise ValueError("Xcode test script must be a file")
+        if not test_scripts:
+            raise ValueError("testScripts must declare the Xcode product's regression scripts")
     native_tests = config.get("nativeTests", {})
     if not isinstance(native_tests, dict) or set(native_tests) - {"localizationScript"}:
         raise ValueError("nativeTests supports localizationScript only")
@@ -225,10 +228,11 @@ def test_commands(root, config, args):
         return [["bash", str(root / config["nativeTests"]["localizationScript"]),
                  "--app", str(args.app), "--output", str(args.output),
                  "--case", args.case, "--timeout-seconds", str(args.timeout_seconds)]]
-    if config["buildSystem"] == "xcode":
-        return [["env", f"TEST_ARCH={args.arch}", "bash", str(root / script)]
-                for script in config["xcode"]["testScripts"]]
-    return [swift_args(root, config, args, args.arch, "test")]
+    commands = [swift_args(root, config, args, args.arch, "test")] if config["buildSystem"] == "swiftpm" else []
+    for script in config.get("testScripts", []):
+        runner = ["python3", "-B"] if Path(script).suffix == ".py" else ["bash"]
+        commands.append(["env", f"TEST_ARCH={args.arch}", *runner, str(root / script)])
+    return commands
 
 
 def plan(root, config, args, app_args):

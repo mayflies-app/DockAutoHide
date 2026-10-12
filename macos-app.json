@@ -22,14 +22,14 @@
     "sharedRelease": "scripts/lib/release"
   },
   "xcode": {
-    "scheme": "DockAutoHide",
-    "testScripts": [
-      "tools/test_launch_at_login.sh",
-      "tools/test_login_menu.sh",
-      "tools/test_multi_display_overlap.sh",
-      "tools/test_localization.sh"
-    ]
+    "scheme": "DockAutoHide"
   },
+  "testScripts": [
+    "tools/test_launch_at_login.sh",
+    "tools/test_login_menu.sh",
+    "tools/test_multi_display_overlap.sh",
+    "tools/test_localization.sh"
+  ],
   "packaging": {
     "infoPlist": "Resources/Info.plist"
   },

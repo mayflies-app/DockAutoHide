@@ -41,7 +41,7 @@ Dry-run uses a dedicated `ubuntu-latest` preview job without Xcode, signing cred
 
 Debug and Release compilation caches are separate. Keys include actual Xcode, SDK and Swift fingerprints, build configuration, dependency/configuration hashes and the source SHA; fallback stays within the same compiler and dependency prefix. Cache paths exclude `dist` and credentials. Pull requests restore only; successful branch pushes may save Debug caches within GitHub's branch scope. Release dispatches on the default branch may save Release caches. Release cache hits and packaging timings require an executed release; dry-run previews do not exercise the Release compilation cache.
 
-Tracked-input timestamps are reused only when content hashes, modes and checkout paths match the saved cache. Changed inputs still rebuild. Ordinary regression scripts share SDK compiler modules inside the existing build cache; fixtures and test execution are created afresh.
+Tracked-input timestamps are reused only when content hashes, modes and checkout paths match the saved cache. Asset catalog and icon directory timestamps require an identical complete tracked tree. Changed inputs still rebuild. Xcode builds on GitHub Actions disable the SDK file-status index; local builds retain Xcode's default. Ordinary regression scripts share SDK compiler modules inside the existing build cache; fixtures and test execution are created afresh.
 
 ## Homebrew Distribution
 

@@ -213,14 +213,18 @@ def swift_args(root, config, args, arch, operation="build"):
 
 def xcode_args(root, config, args):
     arches = "arm64 x86_64" if args.arch == "universal" else args.arch
-    return list(map(str, ["xcodebuild", "build", "-project", root / config["paths"]["project"],
+    argv = ["xcodebuild", "build", "-project", root / config["paths"]["project"],
                          "-scheme", config["xcode"]["scheme"], "-configuration", args.configuration.title(),
                          "-destination", "generic/platform=macOS", "-derivedDataPath",
                          root / ".build/app" / args.configuration / args.arch,
                          f"ARCHS={arches}", "ONLY_ACTIVE_ARCH=NO", "ENABLE_DEBUG_DYLIB=NO", "CODE_SIGNING_ALLOWED=NO",
                          "CODE_SIGNING_REQUIRED=NO", f"CURRENT_PROJECT_VERSION={args.build}",
                          f"MARKETING_VERSION={args.version.split('-')[0]}",
-                         f"MACOSX_DEPLOYMENT_TARGET={config['minimumSystemVersion']}"]))
+                         f"MACOSX_DEPLOYMENT_TARGET={config['minimumSystemVersion']}"]
+    # Ephemeral runners rebuild this SDK-wide index even after a cache hit.
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        argv.append("SDK_STAT_CACHE_ENABLE=NO")
+    return list(map(str, argv))
 
 
 def test_commands(root, config, args):

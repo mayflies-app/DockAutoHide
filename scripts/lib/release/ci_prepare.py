@@ -48,7 +48,7 @@ def input_path(root, name):
     return root / relative
 
 
-def regular_input(root, path):
+def input_info(root, path):
     current = root
     for part in path.relative_to(root).parts:
         current /= part
@@ -58,13 +58,67 @@ def regular_input(root, path):
         info = path.stat()
     except (FileNotFoundError, NotADirectoryError):
         return None
-    return info if stat.S_ISREG(info.st_mode) else None
+    return info
+
+
+def regular_input(root, path):
+    info = input_info(root, path)
+    return info if info and stat.S_ISREG(info.st_mode) else None
+
+
+def asset_roots(names):
+    roots = set()
+    for name in names:
+        parts = Path(name).parts
+        for index, part in enumerate(parts[:-1]):
+            if Path(part).suffix in (".xcassets", ".icon"):
+                roots.add(Path(*parts[:index + 1]))
+                break
+    return sorted(roots)
+
+
+def asset_tree(root, relative, names):
+    """Snapshot only a complete tracked asset tree, without following symlinks."""
+    base = root / relative
+    info = input_info(root, base)
+    if info is None or not stat.S_ISDIR(info.st_mode):
+        return None
+    expected = {name for name in names if name.startswith(relative.as_posix() + "/")}
+    directories = {base}
+    for name in expected:
+        directories.update(parent for parent in (root / name).parents if base == parent or base in parent.parents)
+    members, infos, found = [], {}, set()
+    pending = [base]
+    while pending:
+        path = pending.pop()
+        info = path.lstat()
+        name = path.relative_to(root).as_posix()
+        member = {"path": name, "mode": stat.S_IMODE(info.st_mode)}
+        if stat.S_ISDIR(info.st_mode):
+            if path not in directories:
+                return None
+            member.update(type="directory", mtimeNs=info.st_mtime_ns)
+            with os.scandir(path) as entries:
+                pending.extend(sorted((Path(entry.path) for entry in entries), reverse=True))
+        elif stat.S_ISREG(info.st_mode) and name in expected:
+            member.update(type="file", sha256=contract.digest(path))
+            found.add(name)
+        else:
+            return None
+        members.append(member)
+        infos[name] = info
+    return (members, infos) if expected and found == expected else None
+
+
+def asset_signature(members):
+    return sorted((member["path"], member["type"], member["mode"], member.get("sha256")) for member in members)
 
 
 def cached_input_records(metadata, root, metadata_path):
-    if not isinstance(metadata, dict) or type(metadata.get("schemaVersion")) is not int or metadata["schemaVersion"] != 1:
+    if not isinstance(metadata, dict) or type(metadata.get("schemaVersion")) is not int or metadata["schemaVersion"] != 2:
         raise ValueError("Unsupported input metadata")
-    if metadata.get("root") != str(root) or not isinstance(metadata.get("files"), list):
+    if (metadata.get("root") != str(root) or not isinstance(metadata.get("files"), list)
+            or not isinstance(metadata.get("assetTrees"), list)):
         raise ValueError("Input metadata does not match this checkout")
     seen = set()
     for record in metadata["files"]:
@@ -78,7 +132,44 @@ def cached_input_records(metadata, root, metadata_path):
                 or type(record.get("mtimeNs")) is not int or not 0 <= record["mtimeNs"] <= 2**63 - 1
                 or type(record.get("mode")) is not int or not 0 <= record["mode"] <= 0o7777):
             raise ValueError("Invalid input fingerprint")
-    return metadata["files"]
+    files = {record["path"]: record for record in metadata["files"]}
+    tree_roots = set()
+    for tree in metadata["assetTrees"]:
+        if not isinstance(tree, dict) or not isinstance(tree.get("members"), list):
+            raise ValueError("Invalid asset tree")
+        base = input_path(root, tree.get("path"))
+        if (base.suffix not in (".xcassets", ".icon") or base in tree_roots
+                or any(parent.suffix in (".xcassets", ".icon") for parent in base.relative_to(root).parents)):
+            raise ValueError("Invalid asset root")
+        tree_roots.add(base)
+        members = {}
+        for member in tree["members"]:
+            if not isinstance(member, dict) or member.get("type") not in ("file", "directory"):
+                raise ValueError("Invalid asset member type")
+            path = input_path(root, member.get("path"))
+            if (path != base and base not in path.parents) or path in members:
+                raise ValueError("Invalid or duplicate asset member path")
+            if type(member.get("mode")) is not int or not 0 <= member["mode"] <= 0o7777:
+                raise ValueError("Invalid asset member mode")
+            if member["type"] == "directory":
+                if type(member.get("mtimeNs")) is not int or not 0 <= member["mtimeNs"] <= 2**63 - 1:
+                    raise ValueError("Invalid asset directory timestamp")
+            elif (member["path"] not in files or member.get("sha256") != files[member["path"]]["sha256"]
+                  or member["mode"] != files[member["path"]]["mode"]):
+                raise ValueError("Asset file fingerprint does not match cached inputs")
+            members[path] = member
+        if base not in members or members[base]["type"] != "directory":
+            raise ValueError("Missing asset root directory")
+        for path, member in members.items():
+            if path != base and (path.parent not in members or members[path.parent]["type"] != "directory"):
+                raise ValueError("Missing asset parent directory")
+            if member["type"] == "directory" and not any(
+                    path in child.parents and entry["type"] == "file" for child, entry in members.items()):
+                raise ValueError("Untracked asset directory")
+        if {member["path"] for member in members.values() if member["type"] == "file"} != {
+                name for name in files if name.startswith(tree["path"] + "/")}:
+            raise ValueError("Incomplete asset tree")
+    return metadata["files"], metadata["assetTrees"]
 
 
 def cache_inputs(action, requested_cache):
@@ -87,7 +178,8 @@ def cache_inputs(action, requested_cache):
     cache = input_cache_directory(root, requested_cache)
     metadata_path = cache / INPUT_METADATA
     summary = {"action": action, "status": "saved" if action == "save" else "restored",
-               "saved": 0, "restored": 0, "skipped": 0}
+               "saved": 0, "restored": 0, "skipped": 0,
+               "savedDirectories": 0, "restoredDirectories": 0, "skippedDirectories": 0}
     if metadata_path.is_symlink() or (metadata_path.exists() and not metadata_path.is_file()):
         return dict(summary, status="rejected")
     if action == "restore":
@@ -98,20 +190,34 @@ def cache_inputs(action, requested_cache):
         except (ValueError, UnicodeError, OSError, RecursionError):
             return dict(summary, status="rejected")
         try:
-            records = cached_input_records(metadata, root, metadata_path)
+            records, trees = cached_input_records(metadata, root, metadata_path)
         except ValueError:
             return dict(summary, status="rejected")
     tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=root).split(b"\0")
     names = {os.fsdecode(name) for name in tracked if name}
     if action == "restore":
+        input_infos = {record["path"]: regular_input(root, root / record["path"]) if record["path"] in names else None
+                       for record in records}
+        directory_updates = []
+        for tree in trees:
+            current = asset_tree(root, Path(tree["path"]), names)
+            directories = [member for member in tree["members"] if member["type"] == "directory"]
+            if current is None or asset_signature(current[0]) != asset_signature(tree["members"]):
+                summary["skippedDirectories"] += len(directories)
+                continue
+            directory_updates.extend((root / member["path"], current[1][member["path"]].st_atime_ns, member["mtimeNs"])
+                                     for member in directories)
         for record in records:
             path = input_path(root, record["path"])
-            info = regular_input(root, path) if record["path"] in names else None
+            info = input_infos[record["path"]]
             if info is None or stat.S_IMODE(info.st_mode) != record["mode"] or contract.digest(path) != record["sha256"]:
                 summary["skipped"] += 1
                 continue
             os.utime(path, ns=(info.st_atime_ns, record["mtimeNs"]), follow_symlinks=False)
             summary["restored"] += 1
+        for path, atime, mtime in directory_updates:
+            os.utime(path, ns=(atime, mtime), follow_symlinks=False)
+            summary["restoredDirectories"] += 1
         return summary
     records = []
     for name in sorted(names):
@@ -122,11 +228,17 @@ def cache_inputs(action, requested_cache):
             continue
         records.append({"path": name, "sha256": contract.digest(path), "mtimeNs": info.st_mtime_ns,
                         "mode": stat.S_IMODE(info.st_mode)})
+    trees = []
+    for relative in asset_roots(names):
+        current = asset_tree(root, relative, names)
+        if current is not None:
+            trees.append({"path": relative.as_posix(), "members": current[0]})
+            summary["savedDirectories"] += sum(member["type"] == "directory" for member in current[0])
     cache.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(mode="w", dir=cache, prefix=".source-inputs-", delete=False) as stream:
         temporary = Path(stream.name)
         try:
-            json.dump({"schemaVersion": 1, "root": str(root), "files": records}, stream, sort_keys=True)
+            json.dump({"schemaVersion": 2, "root": str(root), "files": records, "assetTrees": trees}, stream, sort_keys=True)
             stream.write("\n")
             stream.close()
             temporary.replace(metadata_path)

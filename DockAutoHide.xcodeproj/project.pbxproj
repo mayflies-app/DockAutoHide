@@ -183,6 +183,7 @@
 			);
 			inputPaths = (
 				"$(SRCROOT)/VERSION",
+				"$(SRCROOT)/scripts/lib/release/release_contract.py",
 			);
 			name = "Read app version";
 			outputFileListPaths = (
@@ -192,7 +193,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -eu\nversion=$(tr -d '[:space:]' < \"$SCRIPT_INPUT_FILE_0\")\ncase \"$version\" in\n  *[!0-9.]*|'') echo \"Invalid VERSION: $version\" >&2; exit 1 ;;\nesac\nprintf '#define MAYFLIES_APP_VERSION %s\\n' \"$version\" > \"$SCRIPT_OUTPUT_FILE_0\"\n";
+			shellScript = "set -eu\nversion=$(python3 -B -c 'import runpy, sys; from pathlib import Path; validate_version = runpy.run_path(sys.argv[1])[\"validate_version\"]; print(validate_version(Path(sys.argv[2]).read_text().strip()).split(\"-\")[0])' \"$SCRIPT_INPUT_FILE_1\" \"$SCRIPT_INPUT_FILE_0\")\nprintf '#define MAYFLIES_APP_VERSION %s\\n' \"$version\" > \"$SCRIPT_OUTPUT_FILE_0\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

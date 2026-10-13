@@ -27,7 +27,7 @@ case "${TARGET_ARCH}" in
     ;;
 esac
 xcrun swiftc -module-name DockLoginRegression -target "${TARGET_ARCH}-apple-macos13.5" -sdk "$(xcrun --show-sdk-path --sdk macosx)" \
-  -module-cache-path "$WORK/module-cache" "$ROOT/DockAutoHide/DockLogger.swift" \
+  -module-cache-path "${TEST_MODULE_CACHE_PATH:-$WORK/module-cache}" "$ROOT/DockAutoHide/DockLogger.swift" \
   "$ROOT/DockAutoHide/AppSettings.swift" "$ROOT/DockAutoHide/LocalizationResources.swift" "$ROOT/DockAutoHide/LaunchAtLoginManager.swift" "$SCRIPT_DIR/tests/LaunchAtLoginRegression.swift" \
   -o "$FIXTURE_APP/Contents/MacOS/login-regression"
 "$FIXTURE_APP/Contents/MacOS/login-regression"

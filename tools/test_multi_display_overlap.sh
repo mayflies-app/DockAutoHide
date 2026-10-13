@@ -24,7 +24,7 @@ xcrun swiftc \
   -module-name DockAutoHideMultiDisplayRegression \
   -target "${TARGET_ARCH}-apple-macos13.5" \
   -sdk "${SDK_PATH}" \
-  -module-cache-path "${BUILD_DIR}/module-cache" \
+  -module-cache-path "${TEST_MODULE_CACHE_PATH:-${BUILD_DIR}/module-cache}" \
   "${REPO_ROOT}/DockAutoHide/DockLogger.swift" \
   "${REPO_ROOT}/DockAutoHide/DockPreferencesClient.swift" \
   "${REPO_ROOT}/DockAutoHide/DockWindowOverlapEvaluator.swift" \

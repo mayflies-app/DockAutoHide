@@ -231,7 +231,8 @@ def test_commands(root, config, args):
     commands = [swift_args(root, config, args, args.arch, "test")] if config["buildSystem"] == "swiftpm" else []
     for script in config.get("testScripts", []):
         runner = ["python3", "-B"] if Path(script).suffix == ".py" else ["bash"]
-        commands.append(["env", f"TEST_ARCH={args.arch}", *runner, str(root / script)])
+        cache = root / ".build/app" / args.configuration / args.arch / "test-module-cache"
+        commands.append(["env", f"TEST_ARCH={args.arch}", f"TEST_MODULE_CACHE_PATH={cache}", *runner, str(root / script)])
     return commands
 
 

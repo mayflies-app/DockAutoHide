@@ -106,7 +106,7 @@ case "${TARGET_ARCH}" in
   *) echo "Unsupported test architecture: ${TARGET_ARCH}" >&2; exit 1 ;;
 esac
 xcrun swiftc -swift-version 5 -default-isolation MainActor -module-name DockLocalizationRegression -target "${TARGET_ARCH}-apple-macos13.5" -sdk "$(xcrun --show-sdk-path --sdk macosx)" \
-  -module-cache-path "$WORK/module-cache" \
+  -module-cache-path "${TEST_MODULE_CACHE_PATH:-$WORK/module-cache}" \
   "$ROOT/DockAutoHide/AppSettings.swift" "$ROOT/DockAutoHide/LocalizationResources.swift" "$ROOT/DockAutoHide/DockLogger.swift" \
   "$ROOT/DockAutoHide/DockPreferencesClient.swift" "$ROOT/DockAutoHide/DockWindowOverlapEvaluator.swift" \
   "$ROOT/DockAutoHide/SmartPolicyEngine.swift" "$ROOT/DockAutoHide/DockManager.swift" \

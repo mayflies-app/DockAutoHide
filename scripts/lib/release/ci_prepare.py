@@ -7,13 +7,133 @@ import os
 from pathlib import Path
 import platform
 import re
+import stat
 import subprocess
 import sys
+import tempfile
 
 import ci_security
 import release_contract as contract
 
 DEVELOPER_DIRECTORY = "/Applications/Xcode_27.0.app/Contents/Developer"
+INPUT_METADATA = ".source-inputs.json"
+
+
+def input_cache_directory(root, requested):
+    requested = Path(requested)
+    if ".." in requested.parts:
+        raise ValueError("Input cache cannot traverse parent directories")
+    path = requested if requested.is_absolute() else root / requested
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        raise ValueError("Input cache must belong to the checkout") from None
+    if relative.parts[:2] != (".build", "app") or len(relative.parts) < 3:
+        raise ValueError("Input cache must be inside root/.build/app/<configuration>")
+    current = root
+    for part in relative.parts:
+        current /= part
+        if current.is_symlink() or (current.exists() and not current.is_dir()):
+            raise ValueError("Input cache cannot traverse symlinks or non-directories")
+    return path
+
+
+def input_path(root, name):
+    """Return a lexical checkout path without following any source symlink."""
+    if not isinstance(name, str) or not name or "\0" in name:
+        raise ValueError("Invalid cached input path")
+    relative = Path(name)
+    if relative.is_absolute() or any(part in ("", ".", "..") for part in name.split("/")):
+        raise ValueError("Invalid cached input path")
+    return root / relative
+
+
+def regular_input(root, path):
+    current = root
+    for part in path.relative_to(root).parts:
+        current /= part
+        if current.is_symlink():
+            return None
+    try:
+        info = path.stat()
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    return info if stat.S_ISREG(info.st_mode) else None
+
+
+def cached_input_records(metadata, root, metadata_path):
+    if not isinstance(metadata, dict) or type(metadata.get("schemaVersion")) is not int or metadata["schemaVersion"] != 1:
+        raise ValueError("Unsupported input metadata")
+    if metadata.get("root") != str(root) or not isinstance(metadata.get("files"), list):
+        raise ValueError("Input metadata does not match this checkout")
+    seen = set()
+    for record in metadata["files"]:
+        if not isinstance(record, dict):
+            raise ValueError("Invalid input record")
+        path = input_path(root, record.get("path"))
+        if path == metadata_path or path in seen:
+            raise ValueError("Duplicate or reserved input path")
+        seen.add(path)
+        if (not isinstance(record.get("sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", record["sha256"])
+                or type(record.get("mtimeNs")) is not int or not 0 <= record["mtimeNs"] <= 2**63 - 1
+                or type(record.get("mode")) is not int or not 0 <= record["mode"] <= 0o7777):
+            raise ValueError("Invalid input fingerprint")
+    return metadata["files"]
+
+
+def cache_inputs(action, requested_cache):
+    """Keep only tracked-input fingerprints beside a checkout's compiled cache."""
+    root = Path.cwd().resolve()
+    cache = input_cache_directory(root, requested_cache)
+    metadata_path = cache / INPUT_METADATA
+    summary = {"action": action, "status": "saved" if action == "save" else "restored",
+               "saved": 0, "restored": 0, "skipped": 0}
+    if metadata_path.is_symlink() or (metadata_path.exists() and not metadata_path.is_file()):
+        return dict(summary, status="rejected")
+    if action == "restore":
+        try:
+            metadata = json.loads(metadata_path.read_text())
+        except FileNotFoundError:
+            return dict(summary, status="missing")
+        except (ValueError, UnicodeError, OSError, RecursionError):
+            return dict(summary, status="rejected")
+        try:
+            records = cached_input_records(metadata, root, metadata_path)
+        except ValueError:
+            return dict(summary, status="rejected")
+    tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=root).split(b"\0")
+    names = {os.fsdecode(name) for name in tracked if name}
+    if action == "restore":
+        for record in records:
+            path = input_path(root, record["path"])
+            info = regular_input(root, path) if record["path"] in names else None
+            if info is None or stat.S_IMODE(info.st_mode) != record["mode"] or contract.digest(path) != record["sha256"]:
+                summary["skipped"] += 1
+                continue
+            os.utime(path, ns=(info.st_atime_ns, record["mtimeNs"]), follow_symlinks=False)
+            summary["restored"] += 1
+        return summary
+    records = []
+    for name in sorted(names):
+        path = input_path(root, name)
+        info = regular_input(root, path) if path != metadata_path else None
+        if info is None:
+            summary["skipped"] += 1
+            continue
+        records.append({"path": name, "sha256": contract.digest(path), "mtimeNs": info.st_mtime_ns,
+                        "mode": stat.S_IMODE(info.st_mode)})
+    cache.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode="w", dir=cache, prefix=".source-inputs-", delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            json.dump({"schemaVersion": 1, "root": str(root), "files": records}, stream, sort_keys=True)
+            stream.write("\n")
+            stream.close()
+            temporary.replace(metadata_path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    summary["saved"] = len(records)
+    return summary
 
 
 def verify_toolchain(developer_directory=None):
@@ -105,6 +225,14 @@ def prepare(config_path, version, build, architecture, output, signed=False, not
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["cache-inputs"]:
+        parser = argparse.ArgumentParser(description="Restore or save tracked build-input timestamps")
+        parser.add_argument("action", choices=("restore", "save"))
+        parser.add_argument("--cache-dir", type=Path, required=True)
+        args = parser.parse_args(argv[1:])
+        result = cache_inputs(args.action, args.cache_dir)
+        print(json.dumps(result, sort_keys=True))
+        return result
     if argv == ["verify-toolchain"]:
         result = verify_toolchain()
         if os.environ.get("GITHUB_OUTPUT"):

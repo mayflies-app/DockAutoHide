@@ -20,6 +20,8 @@ Run builds the replacement first, normally quits the app at the development outp
 
 `macos-app.json` declares identity and build settings; `VERSION` supplies the marketing version. Common CLI code lives in `scripts/app.py` and `scripts/lib/`. Package defaults to a Release Universal build with ad-hoc signing under `dist/release/universal/`. See [Releasing](releasing.md) for Developer ID packaging. `--dry-run` prints the selected plan without executing it.
 
+For shared-file ownership, synchronization and validation scope, follow [Shared Maintenance](https://github.com/mayflies-app/homebrew-tap/tree/main/templates/macos-app#shared-maintenance).
+
 ## Xcode Workflow
 
 Open `DockAutoHide.xcodeproj` and select the `DockAutoHide` scheme. Use Run to debug and Product → Archive for Xcode signing and distribution tools. Xcode and the CLI use the same product source, bundle identity, entitlements and resources.

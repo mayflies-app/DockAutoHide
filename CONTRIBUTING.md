@@ -8,11 +8,15 @@ Follow [Development](docs/development.md) for the toolchain, command-line workfl
 
 ## Changes
 
-Keep Dock control, overlap geometry, display selection, authorization and login-item policy in product source. Preserve manual control and policy start/stop behavior. Maintain English and Simplified Chinese copy together. Common build and release scripts are maintained in `homebrew-tap/templates/macos-app/scripts` and synchronized here.
+Keep Dock control, overlap geometry, display selection, authorization and login-item policy in product source. Preserve manual control and policy start/stop behavior. Maintain English and Simplified Chinese copy together.
+
+Shared scripts, workflows, and declared design and localization helpers are maintained in `homebrew-tap/templates/macos-app`. Update that source and synchronize from the tap checkout after reviewing local and staged changes. See [Shared Maintenance](https://github.com/mayflies-app/homebrew-tap/tree/main/templates/macos-app#shared-maintenance). Keep app configuration, translations, product behavior and targeted checks here.
 
 ## Validation
 
-Run `./scripts/app.py test` and checks appropriate to the change. Reproduce a reported defect before fixing it, and add regression coverage where existing checks leave a meaningful gap. Injected checks use isolated settings and services; they must not change actual Dock preferences or login items. Validate real permissions and physical displays with the actual app when those boundaries are affected.
+Match validation to the change. For documentation only, check links, referenced paths and `git diff --check`; no app build or product test is needed. For executable changes, run `./scripts/app.py test` and the affected checks in [Development](docs/development.md). Build, package or inspect native UI only when the change affects those behaviors.
+
+Reproduce a reported defect before fixing it, and add regression coverage where existing checks leave a meaningful gap. Injected checks use isolated settings and services; they must not change actual Dock preferences or login items. Validate real permissions and physical displays with the actual app when those boundaries are affected.
 
 Do not commit generated output, signing credentials or personal data. Include fresh logs or screenshots for native interaction changes, with sensitive content removed.
 

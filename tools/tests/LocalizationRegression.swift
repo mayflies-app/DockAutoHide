@@ -45,6 +45,13 @@ final class DockAutomationService: DockAutomationControlling {
     func settle(_ duration: TimeInterval = 0.03) async {
       try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
     }
+    func waitUntil(_ description: String, _ condition: () -> Bool) async {
+      let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+      while !condition() && ContinuousClock.now < deadline {
+        try? await Task.sleep(for: .milliseconds(10))
+      }
+      precondition(condition(), "Timed out waiting for \(description)")
+    }
     check(Bundle.main.bundleURL.pathExtension == "app", "The fixture loads the same app-bundle resource layout as Xcode")
     let expectedKeys = Set(AppText.allCases.map(\.rawValue))
     let english = LocalizationResources.catalog(language: "en", bundle: .main)
@@ -170,7 +177,9 @@ final class DockAutomationService: DockAutomationControlling {
     check(automation.reads == authorizedReads && automation.writes == authorizedWrites && auth.launchRequests + auth.userRequests == authorizedRequests, "Authorized language action makes no Dock or permission calls")
     localization.setLanguage(.simplifiedChinese)
     dock.setManualAutoHideEnabled(false)
-    await settle(0.4)
+    await waitUntil("the attached menu to show Chinese auto-hide off status") {
+      status.menu?.items.contains { $0.title == "状态：自动隐藏已关闭" } == true
+    }
     check(status.menu?.items.contains { $0.title == "状态：自动隐藏已关闭" } == true, "Authorized off status renders in Chinese")
     withExtendedLifetime(nativeController) {}
     print("isolated localization regressions passed (\(checks) checks); production app not launched; real Dock writes, Automation requests and login mutations: 0")

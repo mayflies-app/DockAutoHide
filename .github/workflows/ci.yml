@@ -35,7 +35,7 @@ jobs:
       - run: ./scripts/app.py build --sign ad-hoc
       - run: ./scripts/app.py release --dry-run
       - uses: actions/cache/save@v6
-        if: success() && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.build-cache.outputs.cache-hit != 'true'
+        if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && steps.build-cache.outputs.cache-hit != 'true'
         with:
           path: .build/app/debug/${{ steps.toolchain.outputs.architecture }}
           key: ${{ steps.build-cache.outputs.cache-primary-key }}

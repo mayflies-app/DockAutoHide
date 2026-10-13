@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """CI packaging with the common app builder, temporary keychain and notarization."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import re
 import subprocess
 import sys
@@ -31,7 +33,19 @@ def verify_toolchain(developer_directory=None):
         raise ValueError("The release requires macOS SDK 27.0 or later")
     if not swift or contract.minimum_version(swift[1]) < (6, 4, 0):
         raise ValueError("The release requires Swift 6.4 or later")
-    return {"developerDirectory": directory, "xcode": xcode[1], "macosSDK": sdk, "swift": swift[1]}
+    fingerprint = hashlib.sha256((xcode_text + "\n" + sdk + "\n" + swift_text).encode()).hexdigest()
+    architecture = {"aarch64": "arm64", "AMD64": "x86_64"}.get(platform.machine(), platform.machine())
+    if architecture not in ("arm64", "x86_64"):
+        raise ValueError("Unsupported native build architecture")
+    return {"developerDirectory": directory, "xcode": xcode[1], "macosSDK": sdk, "swift": swift[1],
+            "cacheFingerprint": fingerprint, "nativeArchitecture": architecture}
+
+
+def package_environment(environment):
+    """Keep signing selectors while excluding secrets from persisted build metadata."""
+    private = {"MACOS_CERTIFICATE", "MACOS_CERTIFICATE_PASSWORD", "MACOS_KEYCHAIN_PASSWORD",
+               "APPLE_NOTARIZATION_PRIVATE_KEY", "HOMEBREW_TAP_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"}
+    return {name: value for name, value in environment.items() if name not in private}
 
 
 def prepare(config_path, version, build, architecture, output, signed=False, notarized=False):
@@ -72,9 +86,9 @@ def prepare(config_path, version, build, architecture, output, signed=False, not
                "--arch", architecture, "--output", str(output), "--sign", "developer-id" if signed else "ad-hoc"]
     if signed:
         with ci_security.temporary_keychain() as environment:
-            contract.run(command, cwd=root, env=environment)
+            contract.run(command, cwd=root, env=package_environment(environment))
     else:
-        contract.run(command, cwd=root)
+        contract.run(command, cwd=root, env=package_environment(os.environ))
     app = output / "app" / (config["appName"] + ".app")
     dmg = output / contract.artifact_name(config, version, architecture)
     receipt = None
@@ -93,6 +107,9 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv == ["verify-toolchain"]:
         result = verify_toolchain()
+        if os.environ.get("GITHUB_OUTPUT"):
+            with Path(os.environ["GITHUB_OUTPUT"]).open("a") as stream:
+                stream.write(f"fingerprint={result['cacheFingerprint']}\narchitecture={result['nativeArchitecture']}\n")
         print(json.dumps(result, indent=2, sort_keys=True))
         return result
     parser = argparse.ArgumentParser(description=__doc__)

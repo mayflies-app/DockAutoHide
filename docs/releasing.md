@@ -20,7 +20,7 @@ Developer ID packaging requires an available Developer ID Application identity, 
 
 ## GitHub Actions Release
 
-The manual **macOS release** workflow uses the hosted `xcode-27` runner. Its `dry_run` input defaults to `true` and `publish` defaults to `false`. With dry-run disabled, it builds arm64, x86_64 and Universal Developer ID packages, submits them for Apple notarization, staples and validates each DMG, and verifies the mounted app and final checksums. Enable publication only for an explicitly authorized release from a clean, exact source revision.
+The manual **macOS release** workflow uses the common `./scripts/app.py release` entrypoint. Its `dry_run` input defaults to `true` and `publish` defaults to `false`. With dry-run disabled, it builds one Universal Developer ID package containing arm64 and x86_64, submits its DMG once for Apple notarization, staples and validates that DMG, and verifies the mounted app and final checksums. Enable publication only for an explicitly authorized release from a clean, exact source revision.
 
 Configure these repository secrets:
 
@@ -34,6 +34,12 @@ Configure these repository secrets:
 `MACOS_CERTIFICATE` is a base64-encoded PKCS#12 certificate; the notarization private key accepts PEM or base64. The notarization issuer ID is the App Store Connect issuer, separate from the signing Team ID.
 
 The workflow uses its GitHub token to publish release assets. The tap token must allow updates to `mayflies-app/homebrew-tap`. A public release requires a public release repository and verified immutable assets.
+
+### Cache and Execution
+
+Dry-run uses a dedicated `ubuntu-latest` preview job without Xcode, signing credentials or build-cache access. Execution uses the GitHub-hosted `xcode-27` runner. Release jobs are serialized and never cancel an in-progress release. Ordinary CI cancels superseded runs and retains tests, bundle builds and release-plan checks.
+
+Debug and Release compilation caches are separate. Keys include actual Xcode, SDK and Swift fingerprints, build configuration, dependency/configuration hashes and the source SHA; fallback stays within the same compiler and dependency prefix. Cache paths exclude `dist` and credentials. Pull requests restore only; successful default-branch pushes and release dispatches may save caches. Remote cache hits and timing savings remain unverified.
 
 ## Homebrew Distribution
 

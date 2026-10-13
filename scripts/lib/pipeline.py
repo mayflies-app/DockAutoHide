@@ -18,7 +18,7 @@ NOTARY = ['APPLE_NOTARIZATION_KEY_ID', 'APPLE_NOTARIZATION_ISSUER_ID', 'APPLE_NO
 
 def plan(root, config, version, build, publish=False):
     steps = []
-    for arch in contract.ARCHITECTURES:
+    for arch in ('universal',):
         artifact = str(root / 'dist/release' / arch / contract.artifact_name(config, version, arch))
         steps += [
             {'step': 'package', 'architecture': arch,
@@ -64,13 +64,11 @@ def execute(root, config, version, build, publish):
         flags += ['--request-publish', '--request-tap']
     preflight = release.main(flags)
     if not preflight['reuse']:
-        for arch in contract.ARCHITECTURES:
-            ci_prepare.prepare(root / 'macos-app.json', version, build, arch,
-                               root / 'dist/release' / arch, signed=True, notarized=True)
+        ci_prepare.prepare(root / 'macos-app.json', version, build, 'universal',
+                           root / 'dist/release/universal', signed=True, notarized=True)
         contract.collect(config, root / 'dist/release', version, source, promotion=True)
     if publish:
-        release.publish(config, version, source, root / 'dist/release')
-        proof = release.verify_public_release(config, version, source)
+        proof = release.publish(config, version, source, root / 'dist/release')
         tap = root / '.build/release-tap'
         if tap.exists():
             raise ValueError('Tap execution needs a fresh checkout')

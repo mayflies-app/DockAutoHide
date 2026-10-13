@@ -316,8 +316,19 @@ def collect(config, directory, version, commit=None, promotion=False):
     validate_version(version)
     manifests = []
     files = []
-    for arch in ARCHITECTURES:
-        matches = list(directory.rglob(artifact_name(config, version, arch)))
+    dmgs = list(directory.rglob("*.dmg"))
+    names = {arch: artifact_name(config, version, arch) for arch in ARCHITECTURES}
+    actual_names = {dmg.name for dmg in dmgs}
+    if actual_names - set(names.values()):
+        raise ValueError("Unexpected DMG in release directory")
+    if actual_names == {names["universal"]}:
+        architectures = ("universal",)
+    elif actual_names == set(names.values()):
+        architectures = ARCHITECTURES
+    else:
+        raise ValueError("Release requires a Universal-only or complete three-architecture DMG group")
+    for arch in architectures:
+        matches = [dmg for dmg in dmgs if dmg.name == names[arch]]
         if len(matches) != 1:
             raise ValueError(f"Expected exactly one {arch} DMG")
         dmg = matches[0]
@@ -347,8 +358,6 @@ def collect(config, directory, version, commit=None, promotion=False):
                 manifest["notarization"].get("status"), manifest["notarization"].get("stapled"))
     if len({signing_profile(m) for m in manifests}) != 1:
         raise ValueError("Architecture builds must share the same signing team/mode and notarization readiness")
-    if {p.name for p in directory.rglob("*.dmg")} != {artifact_name(config, version, a) for a in ARCHITECTURES}:
-        raise ValueError("Unexpected DMG in release directory")
     if len({p.name for p in files}) != len(files):
         raise ValueError("Release attachment names must be unique (use architecture-specific receipts)")
     return manifests, files

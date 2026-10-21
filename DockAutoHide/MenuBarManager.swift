@@ -3,16 +3,34 @@ import Combine
 import SwiftUI
 
 /// Menu bar controller for the status item and menu.
-class MenuBarManager {
+@MainActor
+class MenuBarManager: NSObject, NSMenuDelegate, NSMenuItemValidation {
   private var statusItem: NSStatusItem?
+  private let statusItemFactory: () -> NSStatusItem?
+  private let localization: AppLocalization
   private let dockManager: DockManager
   private let launchAtLoginManager: LaunchAtLoginManager
   private var cancellables = Set<AnyCancellable>()
 
-  init(dockManager: DockManager, launchAtLoginManager: LaunchAtLoginManager) {
+  init(
+    dockManager: DockManager, launchAtLoginManager: LaunchAtLoginManager,
+    statusItemFactory: (() -> NSStatusItem?)? = nil,
+    localization: AppLocalization? = nil
+  ) {
+    self.localization = localization ?? .shared
     self.dockManager = dockManager
     self.launchAtLoginManager = launchAtLoginManager
+    self.statusItemFactory = statusItemFactory ?? {
+      NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    }
+    super.init()
     setupMenuBar()
+
+    self.localization.$language
+      .dropFirst()
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] _ in self?.updateMenu() }
+      .store(in: &cancellables)
 
     // Observe DockManager updates.
     dockManager.objectWillChange
@@ -24,33 +42,51 @@ class MenuBarManager {
         }
       }
       .store(in: &cancellables)
+
+    launchAtLoginManager.objectWillChange
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] _ in
+        DispatchQueue.main.async { self?.updateMenu() }
+      }
+      .store(in: &cancellables)
+  }
+
+  // Refresh visible login rows when a user opens the menu after a system change.
+  func menuWillOpen(_ menu: NSMenu) {
+    launchAtLoginManager.refreshStatus()
+    configureLoginItems(in: menu)
   }
 
   /// Configures the status item and menu.
   private func setupMenuBar() {
-    statusItem = NSStatusBar.system
-      .statusItem(withLength: NSStatusItem.squareLength)
+    statusItem = statusItemFactory()
 
     if let button = statusItem?.button {
-      button.image = NSImage(
+      let image = NSImage(
         systemSymbolName: "dock.rectangle",
-        accessibilityDescription: "DockAutoHide"
-      )
-      button.toolTip = "DockAutoHide"
+        accessibilityDescription: localization.text(.appName)
+      )?.withSymbolConfiguration(.init(pointSize: 14, weight: .medium))
+      image?.isTemplate = true
+      button.image = image
+      button.title = ""
+      button.imagePosition = .imageOnly
+      button.toolTip = localization.text(.appName)
+      button.setAccessibilityLabel(localization.text(.appName))
     }
 
     updateMenu()
   }
 
-  /// Rebuilds the menu.
-  private func updateMenu() {
+  /// Builds the menu independently of attaching a real status item.
+  func makeMenu() -> NSMenu {
     let menu = NSMenu()
+    menu.delegate = self
 
     let isAuthorized = dockManager.isAuthorized
 
     // Smart switching.
     let smartItem = NSMenuItem(
-      title: "Smart Switching",
+      title: localization.text(.smartSwitching),
       action: #selector(toggleSmartEnabled),
       keyEquivalent: ""
     )
@@ -61,7 +97,7 @@ class MenuBarManager {
 
     // Manual Dock auto-hide.
     let manualItem = NSMenuItem(
-      title: "Dock Auto-Hide",
+      title: localization.text(.dockAutoHide),
       action: #selector(toggleManualAutoHide),
       keyEquivalent: ""
     )
@@ -74,9 +110,9 @@ class MenuBarManager {
     if isAuthorized {
       statusTitle =
         dockManager.currentAutoHideEnabled
-        ? "Status: Auto-hide On" : "Status: Auto-hide Off"
+        ? localization.text(.statusOn) : localization.text(.statusOff)
     } else {
-      statusTitle = "Status: Not Authorized"
+      statusTitle = localization.text(.notAuthorized)
     }
     let statusMenuItem = NSMenuItem(
       title: statusTitle,
@@ -88,7 +124,7 @@ class MenuBarManager {
 
     if let errorMessage = dockManager.lastErrorMessage {
       let errorItem = NSMenuItem(
-        title: "Error: \(errorMessage)",
+        title: localization.text(.errorPrefix) + errorMessage,
         action: nil,
         keyEquivalent: ""
       )
@@ -98,7 +134,7 @@ class MenuBarManager {
 
     if !isAuthorized {
       let authItem = NSMenuItem(
-        title: "Request System Events Permission",
+        title: localization.text(.requestPermission),
         action: #selector(requestAuthorization),
         keyEquivalent: ""
       )
@@ -110,34 +146,73 @@ class MenuBarManager {
 
     // Launch at login.
     let launchAtLoginItem = NSMenuItem(
-      title: "Launch at Login",
+      title: localization.text(.launchAtLogin),
       action: #selector(toggleLaunchAtLogin),
       keyEquivalent: ""
     )
     launchAtLoginItem.target = self
-    launchAtLoginItem.state = launchAtLoginManager.isEnabled ? .on : .off
-    launchAtLoginItem.isEnabled = isAuthorized
+    launchAtLoginItem.tag = 1001
     menu.addItem(launchAtLoginItem)
+    let detailItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    detailItem.tag = 1002
+    detailItem.isEnabled = false
+    menu.addItem(detailItem)
+    let loginErrorItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    loginErrorItem.tag = 1003
+    loginErrorItem.isEnabled = false
+    menu.addItem(loginErrorItem)
+    let settingsItem = NSMenuItem(
+      title: localization.text(.loginSettings), action: #selector(openLoginItemsSettings), keyEquivalent: ""
+    )
+    settingsItem.tag = 1004
+    settingsItem.target = self
+    menu.addItem(settingsItem)
+    configureLoginItems(in: menu)
 
     menu.addItem(NSMenuItem.separator())
 
-    let versionItem = NSMenuItem(
-      title: versionMenuTitle(),
-      action: nil,
-      keyEquivalent: ""
-    )
-    versionItem.isEnabled = false
-    menu.addItem(versionItem)
+    let languageItem = NSMenuItem(title: localization.text(.language), action: nil, keyEquivalent: "")
+    languageItem.tag = 2000
+    let languageMenu = NSMenu(title: localization.text(.language))
+    for language in AppLanguage.allCases {
+      let item = NSMenuItem(
+        title: language.displayName, action: #selector(changeLanguage(_:)), keyEquivalent: ""
+      )
+      item.target = self
+      item.representedObject = language.rawValue
+      item.state = language == localization.language ? .on : .off
+      languageMenu.addItem(item)
+    }
+    languageItem.submenu = languageMenu
+    menu.addItem(languageItem)
+
+    if let title = versionMenuTitle() {
+      let versionItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+      versionItem.isEnabled = false
+      versionItem.setAccessibilityIdentifier("app.version")
+      menu.addItem(versionItem)
+    }
 
     // Quit.
     let quitItem = NSMenuItem(
-      title: "Quit",
+      title: localization.text(.quit),
       action: #selector(quitApp),
       keyEquivalent: "q"
     )
     quitItem.target = self
     menu.addItem(quitItem)
 
+    return menu
+  }
+
+  private func updateMenu() {
+    if let button = statusItem?.button {
+      let name = localization.text(.appName)
+      button.toolTip = name
+      button.setAccessibilityLabel(name)
+      button.image?.accessibilityDescription = name
+    }
+    let menu = makeMenu()
     // Setting the status item's menu while the menu/button is being laid out
     // or while the menu is open can trigger AppKit layout recursion. If the
     // button is highlighted (menu open), defer the replacement to the next
@@ -149,6 +224,53 @@ class MenuBarManager {
     } else {
       statusItem?.menu = menu
     }
+  }
+
+  func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    if item.tag == 1001 {
+      return launchAtLoginManager.canToggle
+    }
+    // AppKit validates again before dispatch, so preserve the same gates used
+    // when constructing the menu instead of re-enabling unavailable controls.
+    if item.action == #selector(toggleSmartEnabled) {
+      return dockManager.isAuthorized
+    }
+    if item.action == #selector(toggleManualAutoHide) {
+      return dockManager.isAuthorized && !dockManager.smartEnabled
+    }
+    return true
+  }
+
+  private func configureLoginItems(in menu: NSMenu) {
+    let manager = launchAtLoginManager
+    if let item = menu.item(withTag: 1001) {
+      switch manager.status {
+      case .enabled: item.state = .on
+      case .requiresApproval: item.state = .mixed
+      case .notRegistered, .unavailable: item.state = .off
+      }
+      item.isEnabled = manager.canToggle
+    }
+    if let item = menu.item(withTag: 1002) {
+      item.title = manager.statusDetail ?? ""
+      item.isHidden = manager.statusDetail == nil
+    }
+    if let item = menu.item(withTag: 1003) {
+      item.title = manager.lastErrorMessage.map { localization.text(.loginErrorPrefix) + $0 } ?? ""
+      item.isHidden = manager.lastErrorMessage == nil
+    }
+    menu.item(withTag: 1004)?.isHidden = manager.status != .requiresApproval && manager.status != .unavailable
+  }
+
+  @objc private func changeLanguage(_ sender: NSMenuItem) {
+    guard let value = sender.representedObject as? String,
+      let language = AppLanguage(rawValue: value) else { return }
+    localization.setLanguage(language)
+    updateMenu()
+  }
+
+  @objc private func openLoginItemsSettings() {
+    launchAtLoginManager.openSettings()
   }
 
   /// Toggles smart switching.
@@ -182,16 +304,13 @@ class MenuBarManager {
     NSApplication.shared.terminate(nil)
   }
 
-  private func versionMenuTitle() -> String {
-    let shortVersion =
-      Bundle.main.object(
-        forInfoDictionaryKey: "CFBundleShortVersionString"
-      ) as? String ?? "0.0.0"
-    let buildNumber =
-      Bundle.main.object(
-        forInfoDictionaryKey: "CFBundleVersion"
-      ) as? String ?? "0"
-    return "Version: v\(shortVersion) (\(buildNumber))"
+  private func versionMenuTitle() -> String? {
+    guard let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)?
+      .trimmingCharacters(in: .whitespacesAndNewlines), !version.isEmpty else { return nil }
+    let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let value = build.flatMap { $0.isEmpty ? nil : "\(version) (\($0))" } ?? version
+    return String(format: localization.text(.version), locale: Locale(identifier: localization.language.rawValue), value)
   }
 
   /// Releases the status item.

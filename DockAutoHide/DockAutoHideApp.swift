@@ -5,9 +5,12 @@ struct DockAutoHideApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
   var body: some Scene {
-    // Use an empty Settings scene to avoid showing a window.
+    // Keep the app windowless; configuration lives in the status menu.
     Settings {
       EmptyView()
+    }
+    .commands {
+      CommandGroup(replacing: .appSettings) {}
     }
   }
 }

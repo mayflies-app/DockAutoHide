@@ -1,0 +1,8 @@
+# Agent Instructions
+
+- Use `./scripts/app.py build|run|test|package` and `release --dry-run`. Codex Run uses `./scripts/app.py run`. See [Development](docs/development.md).
+- Shared scripts, workflows, and declared design and localization helpers are maintained in `homebrew-tap/templates/macos-app`. This repository declares its repository-relative helper destinations in the `shared` object of `macos-app.json`; app configuration, translations, product behavior and targeted checks belong here. Update shared implementation in the tap and synchronize from its root with explicit app checkout arguments after reviewing local and staged changes. Do not commit host-specific paths or assume a workspace layout. See [Shared Maintenance](https://github.com/mayflies-app/homebrew-tap/tree/main/templates/macos-app#shared-maintenance). Use the existing common entrypoints.
+- Preserve Dock control, overlap geometry, display selection, authorization, manual control and policy start/stop behavior. Injected tests must not change real Dock settings or login items.
+- Maintain English and Simplified Chinese UI with immediate language changes. See [Localization](docs/localization.md).
+- Match validation to the change. Documentation-only changes need link, path and diff checks; executable changes need affected tests. Native checks use isolated data, a visible desktop when needed and fresh output directories; retain inspectable results.
+- Protect unrelated changes and stage only task-owned files. Local builds, tests, packages and commits do not authorize remote writes, notarization or publication.

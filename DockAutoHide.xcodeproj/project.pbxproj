@@ -6,133 +6,324 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5C77CE35658133E2B2B77F5A /* LocalizationResources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D8F7AB9B5B8B574AB07EC24 /* LocalizationResources.swift */; };
+		7897043655CA4FD3B55C7E77 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = F4123E19BE8D00EEE75957A8 /* Localizable.strings */; };
+		24C6B25FB8F73E8CF6978707 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13ACF7129D07C5E0BFAEF40A /* Assets.xcassets */; };
+		4AD47F64CC53BEF0EF3150DE /* DockAutoHideApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DC195FB0D38A4F66187A703 /* DockAutoHideApp.swift */; };
+		4DC8AB62D64EC5F93049ABD1 /* MenuBarManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B54563EAFDE84DC7743ABC8E /* MenuBarManager.swift */; };
+		5BFEE18E47E02E4158A08E92 /* ScreenCapturePermission.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79A7D65C1646919F8EDEB388 /* ScreenCapturePermission.swift */; };
+		60405A668A2EC7F6D12E5E09 /* DockWindowOverlapEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27A962EE23CBCFA9247D15F8 /* DockWindowOverlapEvaluator.swift */; };
+		68660693899C64F1724B2F1A /* DockAuthorizationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCA1CB3EA85113AA44809778 /* DockAuthorizationManager.swift */; };
+		71D9E3B7F6D66F04D5ACEEAF /* DockManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4018B471A84A496A3FC99C2A /* DockManager.swift */; };
+		787719E736C13579C1CFB90A /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4013E3620E38BB7BEA554AA3 /* AppSettings.swift */; };
+		7BB5928AF80CE49632EABDAC /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 020D3598CE4F04DFDE2DA40C /* InfoPlist.strings */; };
+		9DA6CDCB29A015C2113B2520 /* DockLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 432A94FB9898B017FE26381D /* DockLogger.swift */; };
+		A667E99CE18AD0550C3486DB /* DockPreferencesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C5087F5D40CBA39FE55D3A9 /* DockPreferencesClient.swift */; };
+		BABBF688AC4952763A89FEA2 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 826969C65C23B40E7EB05483 /* LICENSE */; };
+		BBFD75DB3BED7C1A27A9C8F9 /* DockApplyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1181EFFBE34752F859609224 /* DockApplyService.swift */; };
+		C59080813304C83E14FDD634 /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4104293061417E0B96BCAF44 /* LaunchAtLoginManager.swift */; };
+		E2B1861AB4A07C2B790244F8 /* DockAutoHide.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8BE90868F9C507BE128B07C8 /* DockAutoHide.icon */; };
+		E5A65CCB261DBBD9C33501F8 /* SmartPolicyEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D2242946408A1613575B6C /* SmartPolicyEngine.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
-		5E8BCC192E8210A2008C0B10 /* DockAutoHide.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DockAutoHide.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9D8F7AB9B5B8B574AB07EC24 /* LocalizationResources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationResources.swift; sourceTree = "<group>"; };
+		3EAA6169B39608DB9D235911 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		95D7FA5A745C43E686C385CD /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		1181EFFBE34752F859609224 /* DockApplyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockApplyService.swift; sourceTree = "<group>"; };
+		13ACF7129D07C5E0BFAEF40A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		27A962EE23CBCFA9247D15F8 /* DockWindowOverlapEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockWindowOverlapEvaluator.swift; sourceTree = "<group>"; };
+		2C5087F5D40CBA39FE55D3A9 /* DockPreferencesClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPreferencesClient.swift; sourceTree = "<group>"; };
+		2F0FAE38DF16958D45E397FB /* DockAutoHide.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DockAutoHide.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3DC195FB0D38A4F66187A703 /* DockAutoHideApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockAutoHideApp.swift; sourceTree = "<group>"; };
+		4013E3620E38BB7BEA554AA3 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		4018B471A84A496A3FC99C2A /* DockManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockManager.swift; sourceTree = "<group>"; };
+		4104293061417E0B96BCAF44 /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
+		432A94FB9898B017FE26381D /* DockLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockLogger.swift; sourceTree = "<group>"; };
+		79A7D65C1646919F8EDEB388 /* ScreenCapturePermission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenCapturePermission.swift; sourceTree = "<group>"; };
+		80CD19D13CC545508DDE2C6B /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		826969C65C23B40E7EB05483 /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
+		8BE90868F9C507BE128B07C8 /* DockAutoHide.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = DockAutoHide.icon; sourceTree = "<group>"; };
+		98D2242946408A1613575B6C /* SmartPolicyEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartPolicyEngine.swift; sourceTree = "<group>"; };
+		B54563EAFDE84DC7743ABC8E /* MenuBarManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarManager.swift; sourceTree = "<group>"; };
+		CA53078F404BC6394EC117E6 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		FCA1CB3EA85113AA44809778 /* DockAuthorizationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockAuthorizationManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedRootGroup section */
-		5E8BCC1B2E8210A2008C0B10 /* DockAutoHide */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
+/* Begin PBXGroup section */
+		46AC024E64E79A83E75526B8 /* DockAutoHide */ = {
+			isa = PBXGroup;
+			children = (
+				4013E3620E38BB7BEA554AA3 /* AppSettings.swift */,
+				9D8F7AB9B5B8B574AB07EC24 /* LocalizationResources.swift */,
+				13ACF7129D07C5E0BFAEF40A /* Assets.xcassets */,
+				1181EFFBE34752F859609224 /* DockApplyService.swift */,
+				FCA1CB3EA85113AA44809778 /* DockAuthorizationManager.swift */,
+				8BE90868F9C507BE128B07C8 /* DockAutoHide.icon */,
+				3DC195FB0D38A4F66187A703 /* DockAutoHideApp.swift */,
+				432A94FB9898B017FE26381D /* DockLogger.swift */,
+				4018B471A84A496A3FC99C2A /* DockManager.swift */,
+				2C5087F5D40CBA39FE55D3A9 /* DockPreferencesClient.swift */,
+				27A962EE23CBCFA9247D15F8 /* DockWindowOverlapEvaluator.swift */,
+				4104293061417E0B96BCAF44 /* LaunchAtLoginManager.swift */,
+				B54563EAFDE84DC7743ABC8E /* MenuBarManager.swift */,
+				79A7D65C1646919F8EDEB388 /* ScreenCapturePermission.swift */,
+				98D2242946408A1613575B6C /* SmartPolicyEngine.swift */,
+			);
 			path = DockAutoHide;
 			sourceTree = "<group>";
 		};
-/* End PBXFileSystemSynchronizedRootGroup section */
-
-/* Begin PBXFrameworksBuildPhase section */
-		5E8BCC162E8210A2008C0B10 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXFrameworksBuildPhase section */
-
-/* Begin PBXGroup section */
-		5E8BCC102E8210A2008C0B10 = {
+		66FC05D49C2029A7527E3D67 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				5E8BCC1B2E8210A2008C0B10 /* DockAutoHide */,
-				5E8BCC1A2E8210A2008C0B10 /* Products */,
+				020D3598CE4F04DFDE2DA40C /* InfoPlist.strings */,
+				F4123E19BE8D00EEE75957A8 /* Localizable.strings */,
 			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
-		5E8BCC1A2E8210A2008C0B10 /* Products */ = {
+		6F1BCF0A1B0BA193C4B9C459 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				5E8BCC192E8210A2008C0B10 /* DockAutoHide.app */,
+				2F0FAE38DF16958D45E397FB /* DockAutoHide.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		DCF960DDCA20D902ABA46673 = {
+			isa = PBXGroup;
+			children = (
+				826969C65C23B40E7EB05483 /* LICENSE */,
+				46AC024E64E79A83E75526B8 /* DockAutoHide */,
+				66FC05D49C2029A7527E3D67 /* Resources */,
+				6F1BCF0A1B0BA193C4B9C459 /* Products */,
+			);
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		5E8BCC182E8210A2008C0B10 /* DockAutoHide */ = {
+		04AAFB24575F16E95565F3A5 /* DockAutoHide */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 5E8BCC3C2E8210A4008C0B10 /* Build configuration list for PBXNativeTarget "DockAutoHide" */;
+			buildConfigurationList = 9CB1DB9E02C4679DC6B8DB94 /* Build configuration list for PBXNativeTarget "DockAutoHide" */;
 			buildPhases = (
-				5E8BCC152E8210A2008C0B10 /* Sources */,
-				5E8BCC162E8210A2008C0B10 /* Frameworks */,
-				5E8BCC172E8210A2008C0B10 /* Resources */,
+				E43519B8DE731676B201A23C /* Read app version */,
+				42BBD2706B25ADFCF030D675 /* Sources */,
+				E98C4EC4B99C099DE5D9055D /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
-			fileSystemSynchronizedGroups = (
-				5E8BCC1B2E8210A2008C0B10 /* DockAutoHide */,
-			);
 			name = DockAutoHide;
 			packageProductDependencies = (
 			);
 			productName = DockAutoHide;
-			productReference = 5E8BCC192E8210A2008C0B10 /* DockAutoHide.app */;
+			productReference = 2F0FAE38DF16958D45E397FB /* DockAutoHide.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		5E8BCC112E8210A2008C0B10 /* Project object */ = {
+		1E6BAC85DA1B5B4597DC7128 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2600;
-				LastUpgradeCheck = 2640;
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2700;
 				TargetAttributes = {
-					5E8BCC182E8210A2008C0B10 = {
-						CreatedOnToolsVersion = 26.0;
+					04AAFB24575F16E95565F3A5 = {
+						DevelopmentTeam = 79X3F8NVAV;
+						ProvisioningStyle = Manual;
 					};
 				};
 			};
-			buildConfigurationList = 5E8BCC142E8210A2008C0B10 /* Build configuration list for PBXProject "DockAutoHide" */;
+			buildConfigurationList = 263B74F1D874E4711445573E /* Build configuration list for PBXProject "DockAutoHide" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				en,
 				Base,
+				en,
+				"zh-Hans",
 			);
-			mainGroup = 5E8BCC102E8210A2008C0B10;
+			mainGroup = DCF960DDCA20D902ABA46673;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
-			productRefGroup = 5E8BCC1A2E8210A2008C0B10 /* Products */;
+			productRefGroup = 6F1BCF0A1B0BA193C4B9C459 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				5E8BCC182E8210A2008C0B10 /* DockAutoHide */,
+				04AAFB24575F16E95565F3A5 /* DockAutoHide */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		5E8BCC172E8210A2008C0B10 /* Resources */ = {
+		E98C4EC4B99C099DE5D9055D /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				24C6B25FB8F73E8CF6978707 /* Assets.xcassets in Resources */,
+				E2B1861AB4A07C2B790244F8 /* DockAutoHide.icon in Resources */,
+				7BB5928AF80CE49632EABDAC /* InfoPlist.strings in Resources */,
+				7897043655CA4FD3B55C7E77 /* Localizable.strings in Resources */,
+				BABBF688AC4952763A89FEA2 /* LICENSE in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		E43519B8DE731676B201A23C /* Read app version */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/VERSION",
+				"$(SRCROOT)/scripts/lib/release/release_contract.py",
+			);
+			name = "Read app version";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/AppVersion.h",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nversion=$(python3 -B -c 'import runpy, sys; from pathlib import Path; validate_version = runpy.run_path(sys.argv[1])[\"validate_version\"]; print(validate_version(Path(sys.argv[2]).read_text().strip()).split(\"-\")[0])' \"$SCRIPT_INPUT_FILE_1\" \"$SCRIPT_INPUT_FILE_0\")\nprintf '#define MAYFLIES_APP_VERSION %s\\n' \"$version\" > \"$SCRIPT_OUTPUT_FILE_0\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
-		5E8BCC152E8210A2008C0B10 /* Sources */ = {
+		42BBD2706B25ADFCF030D675 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				787719E736C13579C1CFB90A /* AppSettings.swift in Sources */,
+				5C77CE35658133E2B2B77F5A /* LocalizationResources.swift in Sources */,
+				BBFD75DB3BED7C1A27A9C8F9 /* DockApplyService.swift in Sources */,
+				68660693899C64F1724B2F1A /* DockAuthorizationManager.swift in Sources */,
+				4AD47F64CC53BEF0EF3150DE /* DockAutoHideApp.swift in Sources */,
+				9DA6CDCB29A015C2113B2520 /* DockLogger.swift in Sources */,
+				71D9E3B7F6D66F04D5ACEEAF /* DockManager.swift in Sources */,
+				A667E99CE18AD0550C3486DB /* DockPreferencesClient.swift in Sources */,
+				60405A668A2EC7F6D12E5E09 /* DockWindowOverlapEvaluator.swift in Sources */,
+				C59080813304C83E14FDD634 /* LaunchAtLoginManager.swift in Sources */,
+				4DC8AB62D64EC5F93049ABD1 /* MenuBarManager.swift in Sources */,
+				5BFEE18E47E02E4158A08E92 /* ScreenCapturePermission.swift in Sources */,
+				E5A65CCB261DBBD9C33501F8 /* SmartPolicyEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXVariantGroup section */
+		F4123E19BE8D00EEE75957A8 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				3EAA6169B39608DB9D235911 /* en */,
+				95D7FA5A745C43E686C385CD /* zh-Hans */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		020D3598CE4F04DFDE2DA40C /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				80CD19D13CC545508DDE2C6B /* en */,
+				CA53078F404BC6394EC117E6 /* zh-Hans */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
 /* Begin XCBuildConfiguration section */
-		5E8BCC3A2E8210A4008C0B10 /* Debug */ = {
+		3581A8DB0A41FCD077192264 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = "arm64 x86_64";
+				ASSETCATALOG_COMPILER_APPICON_NAME = DockAutoHide;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = YES;
+				CODE_SIGN_ENTITLEMENTS = DockAutoHide/DockAutoHide.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				INFOPLIST_PREFIX_HEADER = "$(DERIVED_FILE_DIR)/AppVersion.h";
+				INFOPLIST_PREPROCESS = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.5;
+				ONLY_ACTIVE_ARCH = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = app.mayfiles.DockAutoHide;
+				PRODUCT_NAME = DockAutoHide;
+				SDKROOT = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		6F51C65A99D47B27D1902128 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = DockAutoHide;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = YES;
+				CODE_SIGN_ENTITLEMENTS = DockAutoHide/DockAutoHide.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				INFOPLIST_PREFIX_HEADER = "$(DERIVED_FILE_DIR)/AppVersion.h";
+				INFOPLIST_PREPROCESS = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.5;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = app.mayfiles.DockAutoHide;
+				PRODUCT_NAME = DockAutoHide;
+				SDKROOT = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		77320E750AD0E5925380D342 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CLANG_ENABLE_OBJC_WEAK = YES;
@@ -159,47 +350,37 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				DEAD_CODE_STRIPPING = YES;
-				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 79X3F8NVAV;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
-				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"DEBUG=1",
-					"$(inherited)",
-				);
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.5;
-				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
-				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
 			};
-			name = Debug;
+			name = Release;
 		};
-		5E8BCC3B2E8210A4008C0B10 /* Release */ = {
+		7E16C2F2DC70C775219D92B4 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CLANG_ENABLE_OBJC_WEAK = YES;
@@ -225,138 +406,59 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				COPY_PHASE_STRIP = YES;
-				DEAD_CODE_STRIPPING = YES;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 79X3F8NVAV;
-				ENABLE_NS_ASSERTIONS = NO;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.5;
-				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
-				SDKROOT = macosx;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
-		5E8BCC3D2E8210A4008C0B10 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = DockAutoHide;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
-				AUTOMATION_APPLE_EVENTS = YES;
-				CODE_SIGN_ENTITLEMENTS = DockAutoHide/DockAutoHide.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 79X3F8NVAV;
-				ENABLE_APP_SANDBOX = NO;
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = "";
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = DockAutoHide;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "DockAutoHide uses System Events automation to toggle Dock auto-hide.";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 13.5;
-				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.nshcr.DockAutoHide;
+				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				REGISTER_APP_GROUPS = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
-		5E8BCC3E2E8210A4008C0B10 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = DockAutoHide;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
-				AUTOMATION_APPLE_EVENTS = YES;
-				CODE_SIGN_ENTITLEMENTS = DockAutoHide/DockAutoHide.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 79X3F8NVAV;
-				ENABLE_APP_SANDBOX = NO;
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = "";
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = DockAutoHide;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "DockAutoHide uses System Events automation to toggle Dock auto-hide.";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 13.5;
-				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.nshcr.DockAutoHide;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				REGISTER_APP_GROUPS = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		5E8BCC142E8210A2008C0B10 /* Build configuration list for PBXProject "DockAutoHide" */ = {
+		263B74F1D874E4711445573E /* Build configuration list for PBXProject "DockAutoHide" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				5E8BCC3A2E8210A4008C0B10 /* Debug */,
-				5E8BCC3B2E8210A4008C0B10 /* Release */,
+				7E16C2F2DC70C775219D92B4 /* Debug */,
+				77320E750AD0E5925380D342 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
-		5E8BCC3C2E8210A4008C0B10 /* Build configuration list for PBXNativeTarget "DockAutoHide" */ = {
+		9CB1DB9E02C4679DC6B8DB94 /* Build configuration list for PBXNativeTarget "DockAutoHide" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				5E8BCC3D2E8210A4008C0B10 /* Debug */,
-				5E8BCC3E2E8210A4008C0B10 /* Release */,
+				6F51C65A99D47B27D1902128 /* Debug */,
+				3581A8DB0A41FCD077192264 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = 5E8BCC112E8210A2008C0B10 /* Project object */;
+	rootObject = 1E6BAC85DA1B5B4597DC7128 /* Project object */;
 }

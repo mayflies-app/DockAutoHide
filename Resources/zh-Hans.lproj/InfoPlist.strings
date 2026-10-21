@@ -1,0 +1,3 @@
+"CFBundleName" = "Dock 自动隐藏";
+"CFBundleDisplayName" = "Dock 自动隐藏";
+"NSAppleEventsUsageDescription" = "Dock 自动隐藏需要通过“系统事件”控制 Dock 自动隐藏。";

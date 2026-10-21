@@ -1,0 +1,46 @@
+name: macOS CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - run: python3 -B scripts/lib/release/ci_prepare.py verify-toolchain
+        id: toolchain
+      - uses: actions/cache/restore@v6
+        id: build-cache
+        with:
+          path: .build/app/debug/${{ steps.toolchain.outputs.architecture }}
+          key: ci-debug-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('macos-app.json', 'Package.swift', '**/Package.resolved', '**/project.pbxproj', 'scripts/app.py', 'scripts/lib/release/ci_prepare.py') }}-${{ github.sha }}
+          restore-keys: |
+            ci-debug-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('macos-app.json', 'Package.swift', '**/Package.resolved', '**/project.pbxproj', 'scripts/app.py', 'scripts/lib/release/ci_prepare.py') }}-
+      - name: Restore unchanged build inputs
+        run: python3 -B scripts/lib/release/ci_prepare.py cache-inputs restore --cache-dir .build/app/debug/${{ steps.toolchain.outputs.architecture }}
+      - run: ./scripts/app.py test
+      - run: ./scripts/app.py build --sign ad-hoc
+      - run: ./scripts/app.py release --dry-run
+      - name: Record build input timestamps
+        if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && steps.build-cache.outputs.cache-hit != 'true'
+        run: python3 -B scripts/lib/release/ci_prepare.py cache-inputs save --cache-dir .build/app/debug/${{ steps.toolchain.outputs.architecture }}
+      - uses: actions/cache/save@v6
+        if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && steps.build-cache.outputs.cache-hit != 'true'
+        with:
+          path: .build/app/debug/${{ steps.toolchain.outputs.architecture }}
+          key: ${{ steps.build-cache.outputs.cache-primary-key }}

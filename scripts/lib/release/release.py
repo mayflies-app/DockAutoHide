@@ -121,8 +121,8 @@ def check_publish_state(config, version, source_commit):
     contract.version_order(version)
     existing = release_metadata(config, version)
     if existing:
-        verify_release_identity(config, existing, version, source_commit)
-        return "reuse"
+        verify_release_identity(config, existing, version, source_commit, allow_draft=True)
+        return "draft" if existing.get("draft") is True else "reuse"
     latest = github_json(f"repos/{config['repository']}/releases/latest", missing_ok=True)
     if latest and isinstance(latest.get("tag_name"), str):
         latest_version = latest["tag_name"].removeprefix("v")
@@ -140,11 +140,45 @@ def publish(config, version, source_commit, directory):
         # Never compare a newly rebuilt artifact against or replace a published version.
         return verify_public_release(config, version, source_commit)
     _, files = contract.collect(config, directory, version, source_commit, promotion=True)
-    notes = Path(directory) / "release-notes.md"
-    notes.write_text(f"{config['appName']} {version}\n\nmacOS {config['minimumSystemVersion']} or later.\nDeveloper ID signed and Apple notarized.\n")
-    contract.run(["gh", "release", "create", f"v{version}", *files, "--repo", config["repository"],
-                  "--target", source_commit, "--title", f"{config['appName']} {version}", "--notes-file", notes, "--draft"], capture_output=True)
+    if state == "draft":
+        metadata = release_metadata(config, version)
+        verify_release_identity(config, metadata, version, source_commit, allow_draft=True)
+        if metadata.get("draft") is False:
+            return verify_public_release(config, version, source_commit, directory)
+        expected = {path.name: path for path in files}
+        present, seen, unfinished = set(), set(), []
+        with tempfile.TemporaryDirectory(prefix="draft-resume-") as temporary:
+            for asset in metadata["assets"]:
+                name = asset.get("name")
+                if name not in expected or name in seen:
+                    raise ValueError("Draft contains unexpected or duplicate assets")
+                seen.add(name)
+                if asset.get("state") == "starter" and asset.get("size") == 0 and type(asset.get("id")) is int and asset["id"] > 0:
+                    unfinished.append(asset["id"])
+                    continue
+                if asset.get("state") != "uploaded":
+                    raise ValueError("Draft contains an incomplete or unknown asset state")
+                downloaded = download_asset(config, metadata, asset, temporary, public=False)
+                if contract.digest(downloaded) != contract.digest(expected[name]):
+                    raise ValueError("Existing draft bytes differ from prepared artifacts")
+                present.add(name)
+        # A failed upload can leave an empty starter asset. Remove only these
+        # placeholders, after checking every completed asset; never clobber bytes.
+        for asset_id in unfinished:
+            contract.run(["gh", "api", "--method", "DELETE",
+                          f"repos/{config['repository']}/releases/assets/{asset_id}"], capture_output=True)
+        missing = [path for path in files if path.name not in present]
+        if missing:
+            contract.run(["gh", "release", "upload", f"v{version}", *missing,
+                          "--repo", config["repository"]], capture_output=True)
+    else:
+        notes = Path(directory) / "release-notes.md"
+        notes.write_text(f"{config['appName']} {version}\n\nmacOS {config['minimumSystemVersion']} or later.\nDeveloper ID signed and Apple notarized.\n")
+        contract.run(["gh", "release", "create", f"v{version}", *files, "--repo", config["repository"],
+                      "--target", source_commit, "--title", f"{config['appName']} {version}", "--notes-file", notes, "--draft"], capture_output=True)
     metadata = release_metadata(config, version)
+    if metadata and metadata.get("draft") is False:
+        return verify_public_release(config, version, source_commit, directory)
     with tempfile.TemporaryDirectory(prefix="draft-release-") as temporary:
         _, downloaded = fetch_release(config, version, source_commit, temporary, metadata, public=False)
         if {p.name: contract.digest(p) for p in downloaded} != {p.name: contract.digest(p) for p in files}:
@@ -153,7 +187,7 @@ def publish(config, version, source_commit, directory):
     return verify_public_release(config, version, source_commit, directory)
 
 
-def main(argv=None):
+def main(argv=None, check_credentials=True):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("preflight", "verify-app", "manifest", "collect", "prepare-cask", "verify-public-release", "fetch-release", "publish", "promote-cask"))
     parser.add_argument("--config", type=Path, default=Path("macos-app.json"))
@@ -202,7 +236,7 @@ def main(argv=None):
             raise ValueError("Stable publishing requires a clean source checkout")
         if args.online and result["publishEligible"]:
             result["reuse"] = check_publish_state(config, version, args.source_commit) == "reuse"
-        if args.ci:
+        if args.ci and check_credentials:
             required = []
             if signed and not result["reuse"]:
                 required += ["MACOS_CERTIFICATE", "MACOS_CERTIFICATE_PASSWORD", "MACOS_SIGNING_IDENTITY", "MACOS_TEAM_ID"]

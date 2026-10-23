@@ -6,6 +6,7 @@ import base64
 import contextlib
 import json
 import os
+import re
 from pathlib import Path
 import shlex
 import signal
@@ -97,52 +98,91 @@ def temporary_keychain(environment=None):
 
 def notarize(dmg, receipt, environment=None):
     env = os.environ if environment is None else environment
-    required = ("RUNNER_TEMP", "APPLE_NOTARIZATION_PRIVATE_KEY", "APPLE_NOTARIZATION_KEY_ID", "APPLE_NOTARIZATION_ISSUER_ID")
-    missing = [name for name in required if not env.get(name)]
-    if missing:
-        raise ValueError("Missing CI notarization configuration: " + ", ".join(missing))
     dmg, receipt = Path(dmg), Path(receipt)
     receipt.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint = receipt.with_suffix('.submission.json')
+    digest = contract.digest(dmg)
+    submission = None
+    accepted = None
+    payload = {}
+    if checkpoint.exists():
+        submission = json.loads(checkpoint.read_text())
+        if not isinstance(submission, dict) or submission.get('artifactSha256') != digest or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]*', str(submission.get('id', ''))):
+            raise ValueError('Notarization checkpoint artifact/submission mismatch')
     if receipt.exists():
-        raise ValueError("Refusing to overwrite a notarization receipt")
-    contract.signature_details(dmg, env.get("MACOS_TEAM_ID"), require_developer_id=True)
-    contract.run(["hdiutil", "verify", dmg], capture_output=True)
-    with terminate_with_cleanup(), tempfile.TemporaryDirectory(prefix="release-notary-", dir=env["RUNNER_TEMP"]) as temporary:
-        key = Path(temporary) / "AuthKey.p8"
-        value = env["APPLE_NOTARIZATION_PRIVATE_KEY"]
-        data = value.encode() if "BEGIN PRIVATE KEY" in value else base64.b64decode(value, validate=True)
-        secret_file(key, data.rstrip() + b"\n")
-        credentials = ["--key", key, "--key-id", env["APPLE_NOTARIZATION_KEY_ID"], "--issuer", env["APPLE_NOTARIZATION_ISSUER_ID"]]
-        with contract.release_stage("notary-submit"):
-            result = subprocess.run(list(map(str, ["xcrun", "notarytool", "submit", dmg, *credentials, "--wait", "--timeout", "30m", "--output-format", "json"])), capture_output=True, text=True)
-            # Retain Apple's exact JSON, including failures. No private key/credential file is retained.
-            receipt.write_text(result.stdout or "{}\n")
-            try:
-                payload = json.loads(result.stdout)
-            except json.JSONDecodeError:
-                payload = None
-            valid_json = isinstance(payload, dict)
-            submission_id = payload.get("id") if valid_json else None
-            has_submission_id = isinstance(submission_id, str) and bool(submission_id)
-            if has_submission_id:
-                subprocess.run(list(map(str, ["xcrun", "notarytool", "log", payload["id"], *credentials, receipt.with_suffix(".log.json")])), capture_output=True, text=True)
-            if result.returncode or not valid_json:
-                reason = "submission failed" if result.returncode else "invalid submission response"
-                # Only classify known status markers; never echo arbitrary tool output or credentials.
-                if result.returncode and "HTTP status code 401" in result.stderr:
-                    reason = "authentication rejected"
-                elif result.returncode and "HTTP status code 403" in result.stderr:
-                    reason = "authorization rejected"
-                evidence = ("JSON receipt retained with submission ID; log retrieval attempted" if has_submission_id else
-                            "JSON receipt retained; no submission ID was returned" if valid_json else
-                            "No valid JSON receipt or submission ID was returned")
-                raise RuntimeError(f"Notarization {reason} (exit code {result.returncode}). {evidence}")
+        if submission is None:
+            raise ValueError('Existing notarization receipt has no matching artifact checkpoint; inspect Apple submission history before retrying')
+        try:
+            payload = json.loads(receipt.read_text())
+        except json.JSONDecodeError:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        if payload.get('id') and payload['id'] != submission['id']:
+            raise ValueError('Existing notarization receipt differs from artifact checkpoint')
+        if payload.get('status') == 'Accepted':
             contract.require_accepted_notarization(payload)
-    with contract.release_stage("notary-staple"):
-        contract.run(["xcrun", "stapler", "staple", dmg], capture_output=True)
-    with contract.release_stage("notary-validate"):
-        contract.run(["xcrun", "stapler", "validate", dmg], capture_output=True)
-    return payload
+            accepted = payload
+        elif payload.get('status') in ('Invalid', 'Rejected'):
+            raise ValueError('Notarization receipt is not Accepted; inspect the rejection log before a new submission')
+    contract.signature_details(dmg, env.get('MACOS_TEAM_ID'), require_developer_id=True)
+    contract.run(['hdiutil', 'verify', dmg], capture_output=True)
+    if accepted is None:
+        required = ('RUNNER_TEMP', 'APPLE_NOTARIZATION_PRIVATE_KEY', 'APPLE_NOTARIZATION_KEY_ID', 'APPLE_NOTARIZATION_ISSUER_ID')
+        missing = [name for name in required if not env.get(name)]
+        if missing:
+            raise ValueError('Missing CI notarization configuration: ' + ', '.join(missing))
+        with terminate_with_cleanup(), tempfile.TemporaryDirectory(prefix='release-notary-', dir=env['RUNNER_TEMP']) as temporary:
+            key = Path(temporary) / 'AuthKey.p8'
+            value = env['APPLE_NOTARIZATION_PRIVATE_KEY']
+            data = value.encode() if 'BEGIN PRIVATE KEY' in value else base64.b64decode(value, validate=True)
+            secret_file(key, data.rstrip() + b'\n')
+            credentials = ['--key', key, '--key-id', env['APPLE_NOTARIZATION_KEY_ID'], '--issuer', env['APPLE_NOTARIZATION_ISSUER_ID']]
+
+            def response(result, operation):
+                # Preserve Apple's exact JSON, but never echo arbitrary output or credentials.
+                receipt.write_text(result.stdout or '{}\n')
+                try:
+                    payload = json.loads(result.stdout)
+                except json.JSONDecodeError:
+                    payload = None
+                valid_json = isinstance(payload, dict)
+                submission_id = payload.get('id') if valid_json else None
+                has_id = isinstance(submission_id, str) and bool(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]*', submission_id))
+                if has_id:
+                    if submission and submission['id'] != submission_id:
+                        raise ValueError('Apple response differs from retained submission ID')
+                    checkpoint.write_text(json.dumps({'id': submission_id, 'artifactSha256': digest}, sort_keys=True) + '\n')
+                if result.returncode or not valid_json or not has_id:
+                    if has_id:
+                        subprocess.run(list(map(str, ['xcrun', 'notarytool', 'log', submission_id, *credentials, receipt.with_suffix('.log.json')])), capture_output=True, text=True)
+                    reason = operation + ' failed' if result.returncode else 'invalid submission response'
+                    if result.returncode and 'HTTP status code 401' in result.stderr:
+                        reason = 'authentication rejected'
+                    elif result.returncode and 'HTTP status code 403' in result.stderr:
+                        reason = 'authorization rejected'
+                    evidence = ('JSON receipt retained with submission ID; log retrieval attempted' if has_id else
+                                'JSON receipt retained; no submission ID was returned' if valid_json else
+                                'No valid JSON receipt or submission ID was returned')
+                    raise RuntimeError(f'Notarization {reason} (exit code {result.returncode}). {evidence}')
+                return payload
+
+            with contract.release_stage('notary-submit' if submission is None else 'notary-resume'):
+                if submission is None:
+                    submitted = subprocess.run(list(map(str, ['xcrun', 'notarytool', 'submit', dmg, *credentials, '--output-format', 'json'])), capture_output=True, text=True)
+                    payload = response(submitted, 'submission')
+                    submission = json.loads(checkpoint.read_text())
+                if payload.get('status') not in ('Accepted', 'Invalid', 'Rejected'):
+                    waited = subprocess.run(list(map(str, ['xcrun', 'notarytool', 'wait', submission['id'], *credentials, '--timeout', '30m', '--output-format', 'json'])), capture_output=True, text=True)
+                    payload = response(waited, 'wait')
+                subprocess.run(list(map(str, ['xcrun', 'notarytool', 'log', submission['id'], *credentials, receipt.with_suffix('.log.json')])), capture_output=True, text=True)
+                contract.require_accepted_notarization(payload)
+                accepted = payload
+    with contract.release_stage('notary-staple'):
+        contract.run(['xcrun', 'stapler', 'staple', dmg], capture_output=True)
+    with contract.release_stage('notary-validate'):
+        contract.run(['xcrun', 'stapler', 'validate', dmg], capture_output=True)
+    return accepted
 
 
 def main(argv=None):

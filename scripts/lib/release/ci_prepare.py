@@ -339,6 +339,38 @@ def prepare(config_path, version, build, architecture, output, signed=False, not
     return manifest
 
 
+def notarize_existing(config_path, version, build, source_commit):
+    """Finalize an unchanged signed package downloaded from the package job."""
+    config_path = Path(config_path).resolve()
+    config = contract.load_config(config_path)
+    root = config_path.parent
+    output = root / 'dist/release/universal'
+    for path in (root / 'dist', root / 'dist/release', output):
+        if path.is_symlink():
+            raise ValueError('Notarization output cannot traverse a symlink')
+    manifests, _ = contract.collect(config, output, version, source_commit)
+    if len(manifests) != 1 or manifests[0]['architecture'] != 'universal':
+        raise ValueError('Notary job requires one Universal package')
+    original = manifests[0]
+    if original['build'] != build or original['source']['dirty']:
+        raise ValueError('Notary package build/source mismatch')
+    app = output / 'app' / (config['appName'] + '.app')
+    team = os.environ.get('MACOS_TEAM_ID')
+    if not team:
+        raise ValueError('Missing CI notarization configuration: MACOS_TEAM_ID')
+    actual = contract.verify_app(config, app, version, build, 'universal', True, team)
+    if actual['payloadSha256'] != original['bundle']['payloadSha256']:
+        raise ValueError('Downloaded signed app payload differs from package manifest')
+    dmg = output / contract.artifact_name(config, version, 'universal')
+    receipt = dmg.with_suffix('.notary.json')
+    ci_security.notarize(dmg, receipt)
+    with contract.release_stage('verify-final-artifact'):
+        final = contract.create_manifest(config, root, app, dmg, version, build, 'universal', True, team, receipt)
+        dmg.with_suffix('.json').write_text(json.dumps(final, indent=2, sort_keys=True) + '\n')
+        dmg.with_suffix('.dmg.sha256').write_text(f"{final['artifact']['sha256']}  {dmg.name}\n")
+    return final
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["cache-inputs"]:

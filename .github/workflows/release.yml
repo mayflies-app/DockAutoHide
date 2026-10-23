@@ -40,11 +40,33 @@ jobs:
           if [[ -n "$VERSION_INPUT" ]]; then args+=(--version "$VERSION_INPUT"); fi
           if [[ "$PUBLISH_INPUT" == true ]]; then args+=(--publish); fi
           ./scripts/app.py "${args[@]}"
-  release:
+  preflight:
     if: '!inputs.dry_run'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.preflight.outputs.version }}
+      reuse: ${{ steps.preflight.outputs.reuse }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Validate source and publication eligibility
+        id: preflight
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+          PUBLISH_INPUT: ${{ inputs.publish }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          args=(release --execute --stage preflight --build "${GITHUB_RUN_NUMBER}")
+          if [[ -n "$VERSION_INPUT" ]]; then args+=(--version "$VERSION_INPUT"); fi
+          if [[ "$PUBLISH_INPUT" == true ]]; then args+=(--publish); fi
+          ./scripts/app.py "${args[@]}"
+  package:
+    needs: preflight
+    if: needs.preflight.outputs.reuse != 'true'
     runs-on: xcode-27
-    permissions:
-      contents: write
+    outputs:
+      artifact: ${{ steps.signed.outputs.artifact-id }}
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
     steps:
@@ -62,24 +84,15 @@ jobs:
             release-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('macos-app.json', 'Package.swift', '**/Package.resolved', '**/project.pbxproj', 'scripts/app.py', 'scripts/lib/release/ci_prepare.py') }}-
       - name: Restore unchanged build inputs
         run: python3 -B scripts/lib/release/ci_prepare.py cache-inputs restore --cache-dir .build/app/release
-      - name: Build, sign and notarize; optionally publish and update the cask
+      - name: Build and sign the Universal package
         env:
-          VERSION_INPUT: ${{ inputs.version }}
-          PUBLISH_INPUT: ${{ inputs.publish }}
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
           GH_TOKEN: ${{ github.token }}
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
           MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
-          APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
-          APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
-          APPLE_NOTARIZATION_PRIVATE_KEY: ${{ secrets.APPLE_NOTARIZATION_PRIVATE_KEY }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          args=(release --execute --build "${GITHUB_RUN_NUMBER}")
-          if [[ -n "$VERSION_INPUT" ]]; then args+=(--version "$VERSION_INPUT"); fi
-          if [[ "$PUBLISH_INPUT" == true ]]; then args+=(--publish); fi
-          ./scripts/app.py "${args[@]}"
+        run: ./scripts/app.py release --execute --stage package --version "$RELEASE_VERSION" --build "$GITHUB_RUN_NUMBER"
       - name: Record build input timestamps
         if: success() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.build-cache.outputs.cache-hit != 'true'
         run: python3 -B scripts/lib/release/ci_prepare.py cache-inputs save --cache-dir .build/app/release
@@ -88,10 +101,113 @@ jobs:
         with:
           path: .build/app/release
           key: ${{ steps.build-cache.outputs.cache-primary-key }}
+      - name: Preserve signed bundle permissions and symlinks
+        run: tar -cf dist/release-signed.tar -C dist/release universal
       - uses: actions/upload-artifact@v6
-        if: always()
+        id: signed
         with:
-          name: release
-          path: dist/release
-          if-no-files-found: warn
+          name: release-signed-${{ github.run_attempt }}
+          path: dist/release-signed.tar
+          if-no-files-found: error
           compression-level: 0
+  notarize:
+    needs: [preflight, package]
+    runs-on: xcode-27
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      artifact: ${{ steps.notarized.outputs.artifact-id }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Validate artifact handoff
+        env:
+          ARTIFACT_ID: ${{ needs.package.outputs.artifact }}
+        run: |
+          [[ "$ARTIFACT_ID" =~ ^[0-9]+$ ]] || { echo "::error::Missing or invalid signed package artifact ID"; exit 1; }
+      - uses: actions/download-artifact@v6
+        with:
+          artifact-ids: ${{ needs.package.outputs.artifact }}
+          path: dist
+          merge-multiple: true
+      - name: Restore the exact signed package
+        run: |
+          mkdir -p dist/release
+          tar -xf dist/release-signed.tar -C dist/release
+      - name: Resume or submit notarization and verify final bytes
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+          APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
+          APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
+          APPLE_NOTARIZATION_PRIVATE_KEY: ${{ secrets.APPLE_NOTARIZATION_PRIVATE_KEY }}
+        run: ./scripts/app.py release --execute --stage notarize --version "$RELEASE_VERSION" --build "$GITHUB_RUN_NUMBER"
+      - name: Retain submission checkpoint and Apple diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-notary-state-${{ github.run_attempt }}
+          path: |
+            dist/release/universal/*.notary.json
+            dist/release/universal/*.notary.submission.json
+            dist/release/universal/*.notary.log.json
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v6
+        id: notarized
+        with:
+          name: release-notarized-${{ github.run_attempt }}
+          path: |
+            dist/release/universal/*.dmg
+            dist/release/universal/*.dmg.sha256
+            dist/release/universal/*-universal.json
+            dist/release/universal/*.notary.json
+          if-no-files-found: error
+          compression-level: 0
+  publish:
+    needs: [preflight, notarize]
+    if: >-
+      !cancelled() && inputs.publish && needs.preflight.result == 'success' &&
+      (needs.preflight.outputs.reuse == 'true' || needs.notarize.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Validate artifact handoff
+        if: needs.preflight.outputs.reuse != 'true'
+        env:
+          ARTIFACT_ID: ${{ needs.notarize.outputs.artifact }}
+        run: |
+          [[ "$ARTIFACT_ID" =~ ^[0-9]+$ ]] || { echo "::error::Missing or invalid notarized package artifact ID"; exit 1; }
+      - uses: actions/download-artifact@v6
+        if: needs.preflight.outputs.reuse != 'true'
+        with:
+          artifact-ids: ${{ needs.notarize.outputs.artifact }}
+          path: dist/release/universal
+          merge-multiple: true
+      - name: Publish or verify the existing immutable release
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/app.py release --execute --stage publish --publish --version "$RELEASE_VERSION" --build "$GITHUB_RUN_NUMBER"
+  cask:
+    needs: [preflight, publish]
+    if: "!cancelled() && inputs.publish && needs.preflight.result == 'success' && needs.publish.result == 'success'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Verify public assets and update only the target cask
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: ./scripts/app.py release --execute --stage cask --publish --version "$RELEASE_VERSION" --build "$GITHUB_RUN_NUMBER"

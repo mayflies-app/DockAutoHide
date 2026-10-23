@@ -20,7 +20,7 @@ Developer ID packaging requires an available Developer ID Application identity, 
 
 ## GitHub Actions Release
 
-The manual **macOS release** workflow uses the common `./scripts/app.py release` entrypoint. Its `dry_run` input defaults to `true` and `publish` defaults to `false`. With dry-run disabled, it builds one Universal Developer ID package containing arm64 and x86_64, submits its DMG once for Apple notarization, staples and validates that DMG, and verifies the mounted app and final checksums. Enable publication only for an explicitly authorized release from a clean, exact source revision.
+The manual **macOS release** workflow uses the common `./scripts/app.py release` entrypoint. Its `dry_run` input defaults to `true` and `publish` defaults to `false`. With dry-run disabled, it builds one Universal Developer ID package containing arm64 and x86_64, submits its DMG for Apple notarization, staples and validates that DMG, and verifies the mounted app and final checksums. Enable publication only for an explicitly authorized release from a clean, exact source revision.
 
 Configure these repository secrets:
 
@@ -37,7 +37,11 @@ The workflow uses its GitHub token to publish release assets. The tap token must
 
 ### Cache and Execution
 
-Dry-run uses a dedicated `ubuntu-latest` preview job without Xcode, signing credentials or build-cache access. Execution uses the GitHub-hosted `xcode-27` runner. Release jobs are serialized and never cancel an in-progress release. Ordinary CI cancels superseded runs and retains tests, bundle builds and release-plan checks.
+Dry-run uses the `preview` job on `ubuntu-latest`, without credentials or build-cache access. Execution follows `preflight → package → notarize → publish → cask`, using the common `./scripts/app.py release --execute --stage <job>` entrypoint. `package` and `notarize` use GitHub-hosted `xcode-27` with Xcode 27; the other jobs use `ubuntu-latest`. Signing secrets are scoped to `package`, notarization secrets and Team ID to `notarize`, Contents write to `publish`, and `HOMEBREW_TAP_TOKEN` to `cask`. `publish=false` stops after notarization. A matching public version reuses verified public assets and skips rebuilding and notarization. Release runs are serialized and never cancel an in-progress execution.
+
+Use **Re-run failed jobs** or re-run a failed job itself to reuse successful upstream work. Jobs download immutable inputs by the producer's artifact ID; the signed app travels in a tar archive preserving executable modes and symlinks. Notarization resumes a retained submission ID after checking the original DMG checksum. Draft publication verifies existing bytes and uploads only missing assets. Empty `starter` placeholders from failed uploads are removed only after all completed assets pass byte verification; an already published release is verified without further writes. Missing artifact IDs stop before download, without falling back to all artifacts. A cask retry only verifies public assets and updates the tap. Build cache saving completes in `package` even if a later job fails.
+
+Keep workflow artifacts until completion. Expired inputs require a new run. If a prior notary execution has no retained submission ID, inspect Apple submission history before starting a new workflow run. Re-running all jobs can produce different signed bytes that cannot reuse the previous checkpoint. See [shared release retries](https://github.com/mayflies-app/homebrew-tap/blob/main/docs/homebrew.md#retry-a-failed-job) for recovery boundaries. Ordinary CI retains tests, bundle builds and release-plan checks.
 
 Debug and Release compilation caches are separate. Keys include actual Xcode, SDK and Swift fingerprints, build configuration, dependency/configuration hashes and the source SHA; fallback stays within the same compiler and dependency prefix. Cache paths exclude `dist` and credentials. Pull requests restore only; successful branch pushes may save Debug caches within GitHub's branch scope. Release dispatches on the default branch may save Release caches. Release cache hits and packaging timings require an executed release; dry-run previews do not exercise the Release compilation cache.
 

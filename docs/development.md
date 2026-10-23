@@ -20,14 +20,14 @@ Run builds the replacement first, normally quits the app at the development outp
 
 `macos-app.json` declares identity and build settings; `VERSION` supplies the marketing version. Common CLI code lives in `scripts/app.py` and `scripts/lib/`. Package defaults to a Release Universal build with ad-hoc signing under `dist/release/universal/`. See [Releasing](releasing.md) for Developer ID packaging. `--dry-run` prints the selected plan without executing it.
 
-Shared scripts, workflows, and declared design and localization helpers are maintained in `homebrew-tap/templates/macos-app`. The `shared` object in this repository's `macos-app.json` declares helper destinations relative to this repository. Update shared implementation in the tap, then run from the tap checkout root:
+Shared scripts, workflows, and declared design and localization helpers are maintained in `macos-app-tooling/templates/macos-app`. The `shared` object in this repository's `macos-app.json` declares helper destinations relative to this repository. Update shared implementation in macos-app-tooling, then run from its checkout root:
 
 ```sh
 python3 -B scripts/sync_apps.py --check APP_CHECKOUT
 python3 -B scripts/sync_apps.py --apply APP_CHECKOUT
 ```
 
-Replace `APP_CHECKOUT` with this app's checkout directory; multiple explicit checkout arguments are accepted. The check is read-only; apply copies shared files. Review local and staged changes before applying and inspect the resulting diff. Checkouts can live in any directory: do not commit host-specific paths or a workspace layout. App configuration, translations, product behavior and targeted checks stay in this repository. Follow [Shared Maintenance](https://github.com/mayflies-app/homebrew-tap/tree/main/templates/macos-app#shared-maintenance) for validation scope.
+Replace `APP_CHECKOUT` with this app's checkout directory; multiple explicit checkout arguments are accepted. The check is read-only; apply copies shared files. Review local and staged changes before applying and inspect the resulting diff. Checkouts can live in any directory: do not commit host-specific paths or a workspace layout. App configuration, translations, product behavior and targeted checks stay in this repository. Follow [Shared Maintenance](https://github.com/mayflies-app/macos-app-tooling/tree/main/templates/macos-app#shared-maintenance) for validation scope.
 
 ## Xcode Workflow
 

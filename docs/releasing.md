@@ -41,7 +41,7 @@ Dry-run uses the `preview` job on `ubuntu-latest`, without credentials or build-
 
 Use **Re-run failed jobs** or re-run a failed job itself to reuse successful upstream work. Jobs download immutable inputs by the producer's artifact ID; the signed app travels in a tar archive preserving executable modes and symlinks. Notarization resumes a retained submission ID after checking the original DMG checksum. Draft publication verifies existing bytes and uploads only missing assets. Empty `starter` placeholders from failed uploads are removed only after all completed assets pass byte verification; an already published release is verified without further writes. Missing artifact IDs stop before download, without falling back to all artifacts. A cask retry only verifies public assets and updates the tap. Build cache saving completes in `package` even if a later job fails.
 
-Keep workflow artifacts until completion. Expired inputs require a new run. If a prior notary execution has no retained submission ID, inspect Apple submission history before starting a new workflow run. Re-running all jobs can produce different signed bytes that cannot reuse the previous checkpoint. See [shared release retries](https://github.com/mayflies-app/homebrew-tap/blob/main/docs/homebrew.md#retry-a-failed-job) for recovery boundaries. Ordinary CI retains tests, bundle builds and release-plan checks.
+Keep workflow artifacts until completion. Expired inputs require a new run. If a prior notary execution has no retained submission ID, inspect Apple submission history before starting a new workflow run. Re-running all jobs can produce different signed bytes that cannot reuse the previous checkpoint. See [shared release retries](https://github.com/mayflies-app/macos-app-tooling/blob/main/docs/releasing.md#retry-a-failed-job) for recovery boundaries. Ordinary CI retains tests, bundle builds and release-plan checks.
 
 Debug and Release compilation caches are separate. Keys include actual Xcode, SDK and Swift fingerprints, build configuration, dependency/configuration hashes and the source SHA; fallback stays within the same compiler and dependency prefix. Cache paths exclude `dist` and credentials. Pull requests restore only; successful branch pushes may save Debug caches within GitHub's branch scope. Release dispatches on the default branch may save Release caches. Release cache hits and packaging timings require an executed release; dry-run previews do not exercise the Release compilation cache.
 
@@ -51,12 +51,12 @@ Tracked-input timestamps are reused only when content hashes, modes and checkout
 
 With `publish` enabled, the workflow verifies the public Universal DMG download and updates only `Casks/dockautohide.rb` in [mayflies-app/homebrew-tap](https://github.com/mayflies-app/homebrew-tap). The cask uses the final public DMG checksum, product bundle name and macOS 13.5 requirement.
 
-Homebrew installs the version recorded in the published cask. Local packages and version changes become available there only after a successful authorized publication and cask update. See the tap's [distribution documentation](https://github.com/mayflies-app/homebrew-tap/blob/main/docs/homebrew.md) for the shared release contract.
+Homebrew installs the version recorded in the published cask. Local packages and version changes become available there only after a successful authorized publication and cask update. See the [shared release guide](https://github.com/mayflies-app/macos-app-tooling/blob/main/docs/releasing.md) for the release contract.
 
 ## Release Diagnostics
 
 Release logs identify stages, failure kinds and external exit codes, with credential-safe
-GitHub error annotations. See [shared release diagnostics](https://github.com/mayflies-app/homebrew-tap/blob/main/docs/homebrew.md#release-diagnostics)
+GitHub error annotations. See [shared release diagnostics](https://github.com/mayflies-app/macos-app-tooling/blob/main/docs/releasing.md#release-diagnostics)
 for authentication, authorization, repository access, network, concurrency and validation errors.
 Tap updates use `HOMEBREW_TAP_TOKEN`, separately from the app workflow token.
 

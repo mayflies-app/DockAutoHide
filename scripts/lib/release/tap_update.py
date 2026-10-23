@@ -97,37 +97,46 @@ def remote_update(tap, config, candidate, version, source_commit, branch, tap_re
     allowed = {f"https://github.com/{tap_repository}", f"https://github.com/{tap_repository}.git", f"git@github.com:{tap_repository}.git"}
     if remote not in allowed or git(tap, "branch", "--show-current").strip() != branch:
         raise ValueError("Tap origin/branch does not match the explicit promotion target")
-    proof = release.verify_public_release(config, version, source_commit)
-    candidate_sha = validate_candidate(config, Path(candidate).read_text(), version)
-    if candidate_sha != proof["artifact"]["sha256"]:
-        raise ValueError("Cask SHA-256 differs from the actual public universal DMG")
-    git(tap, "fetch", "origin", branch)
-    if git(tap, "rev-list", f"origin/{branch}..HEAD").strip():
-        raise ValueError("Isolated tap checkout has unpublished local commits")
-    git(tap, "merge", "--ff-only", f"origin/{branch}")
-    result = update(tap, config, candidate, version, write=True, commit=True)
+    with contract.release_stage("tap-verify-release"):
+        proof = release.verify_public_release(config, version, source_commit)
+        candidate_sha = validate_candidate(config, Path(candidate).read_text(), version)
+        if candidate_sha != proof["artifact"]["sha256"]:
+            raise ValueError("Cask SHA-256 differs from the actual public universal DMG")
+    with contract.release_stage("tap-refresh"):
+        git(tap, "fetch", "origin", branch)
+        if git(tap, "rev-list", f"origin/{branch}..HEAD").strip():
+            raise ValueError("Isolated tap checkout has unpublished local commits")
+        git(tap, "merge", "--ff-only", f"origin/{branch}")
+    with contract.release_stage("tap-cask-commit"):
+        result = update(tap, config, candidate, version, write=True, commit=True)
     if not result["changed"]:
         return result
     for attempt in range(3):
+        print(f"[release] stage=tap-push status=started attempt={attempt + 1}/3", file=sys.stderr, flush=True)
         pushed = subprocess.run(["git", "-C", str(tap), "push", "origin", f"HEAD:refs/heads/{branch}"], capture_output=True, text=True)
         if pushed.returncode == 0:
+            print(f"[release] stage=tap-push status=completed attempt={attempt + 1}", file=sys.stderr, flush=True)
             result["pushed"] = True
             return result
-        if attempt == 2:
-            raise RuntimeError("Tap push failed after bounded concurrency retries; local commit retained")
-        git(tap, "fetch", "origin", branch)
-        # If another run updated this same cask, stop instead of silently overwriting it.
-        changed = git(tap, "diff", "--name-only", "HEAD^", f"origin/{branch}", "--", relative).strip()
-        if changed:
-            raise ValueError("Concurrent update touched the same cask; inspect the retained local commit")
-        try:
-            git(tap, "rebase", f"origin/{branch}")
-        except subprocess.CalledProcessError:
-            git(tap, "rebase", "--abort")
-            raise RuntimeError("Concurrent tap changes could not be rebased safely") from None
-        changed_paths = git(tap, "diff", "--name-only", f"origin/{branch}", "HEAD").splitlines()
-        if changed_paths != [relative]:
-            raise ValueError("Rebased promotion would modify more than its target cask")
+        error = subprocess.CalledProcessError(pushed.returncode, pushed.args, output=pushed.stdout, stderr=pushed.stderr)
+        if contract.failure_kind(error) != "concurrent-update" or attempt == 2:
+            with contract.release_stage("tap-push"):
+                raise error
+        print(f"[release] stage=tap-push status=retry kind=concurrent-update attempt={attempt + 1}/3", file=sys.stderr, flush=True)
+        with contract.release_stage("tap-rebase"):
+            git(tap, "fetch", "origin", branch)
+            # If another run updated this same cask, stop instead of silently overwriting it.
+            changed = git(tap, "diff", "--name-only", "HEAD^", f"origin/{branch}", "--", relative).strip()
+            if changed:
+                raise ValueError("Concurrent update touched the same cask; inspect the retained local commit")
+            try:
+                git(tap, "rebase", f"origin/{branch}")
+            except subprocess.CalledProcessError:
+                git(tap, "rebase", "--abort")
+                raise RuntimeError("Concurrent tap changes could not be rebased safely") from None
+            changed_paths = git(tap, "diff", "--name-only", f"origin/{branch}", "HEAD").splitlines()
+            if changed_paths != [relative]:
+                raise ValueError("Rebased promotion would modify more than its target cask")
     raise RuntimeError("Unreachable push state")
 
 
@@ -165,5 +174,5 @@ if __name__ == "__main__":
     try:
         main()
     except (ValueError, RuntimeError, OSError, subprocess.CalledProcessError) as error:
-        print("Tap update error: " + ("external command failed" if isinstance(error, subprocess.CalledProcessError) else str(error)), file=sys.stderr)
+        print("Tap update error: " + contract.failure_message(error), file=sys.stderr)
         sys.exit(1)

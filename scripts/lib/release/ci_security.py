@@ -113,32 +113,35 @@ def notarize(dmg, receipt, environment=None):
         data = value.encode() if "BEGIN PRIVATE KEY" in value else base64.b64decode(value, validate=True)
         secret_file(key, data.rstrip() + b"\n")
         credentials = ["--key", key, "--key-id", env["APPLE_NOTARIZATION_KEY_ID"], "--issuer", env["APPLE_NOTARIZATION_ISSUER_ID"]]
-        result = subprocess.run(list(map(str, ["xcrun", "notarytool", "submit", dmg, *credentials, "--wait", "--timeout", "30m", "--output-format", "json"])), capture_output=True, text=True)
-        # Retain Apple's exact JSON, including failures. No private key/credential file is retained.
-        receipt.write_text(result.stdout or "{}\n")
-        try:
-            payload = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            payload = None
-        valid_json = isinstance(payload, dict)
-        submission_id = payload.get("id") if valid_json else None
-        has_submission_id = isinstance(submission_id, str) and bool(submission_id)
-        if has_submission_id:
-            subprocess.run(list(map(str, ["xcrun", "notarytool", "log", payload["id"], *credentials, receipt.with_suffix(".log.json")])), capture_output=True, text=True)
-        if result.returncode or not valid_json:
-            reason = "submission failed" if result.returncode else "invalid submission response"
-            # Only classify known status markers; never echo arbitrary tool output or credentials.
-            if result.returncode and "HTTP status code 401" in result.stderr:
-                reason = "authentication rejected"
-            elif result.returncode and "HTTP status code 403" in result.stderr:
-                reason = "authorization rejected"
-            evidence = ("JSON receipt retained with submission ID; log retrieval attempted" if has_submission_id else
-                        "JSON receipt retained; no submission ID was returned" if valid_json else
-                        "No valid JSON receipt or submission ID was returned")
-            raise RuntimeError(f"Notarization {reason} (exit code {result.returncode}). {evidence}")
-        contract.require_accepted_notarization(payload)
-    contract.run(["xcrun", "stapler", "staple", dmg], capture_output=True)
-    contract.run(["xcrun", "stapler", "validate", dmg], capture_output=True)
+        with contract.release_stage("notary-submit"):
+            result = subprocess.run(list(map(str, ["xcrun", "notarytool", "submit", dmg, *credentials, "--wait", "--timeout", "30m", "--output-format", "json"])), capture_output=True, text=True)
+            # Retain Apple's exact JSON, including failures. No private key/credential file is retained.
+            receipt.write_text(result.stdout or "{}\n")
+            try:
+                payload = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                payload = None
+            valid_json = isinstance(payload, dict)
+            submission_id = payload.get("id") if valid_json else None
+            has_submission_id = isinstance(submission_id, str) and bool(submission_id)
+            if has_submission_id:
+                subprocess.run(list(map(str, ["xcrun", "notarytool", "log", payload["id"], *credentials, receipt.with_suffix(".log.json")])), capture_output=True, text=True)
+            if result.returncode or not valid_json:
+                reason = "submission failed" if result.returncode else "invalid submission response"
+                # Only classify known status markers; never echo arbitrary tool output or credentials.
+                if result.returncode and "HTTP status code 401" in result.stderr:
+                    reason = "authentication rejected"
+                elif result.returncode and "HTTP status code 403" in result.stderr:
+                    reason = "authorization rejected"
+                evidence = ("JSON receipt retained with submission ID; log retrieval attempted" if has_submission_id else
+                            "JSON receipt retained; no submission ID was returned" if valid_json else
+                            "No valid JSON receipt or submission ID was returned")
+                raise RuntimeError(f"Notarization {reason} (exit code {result.returncode}). {evidence}")
+            contract.require_accepted_notarization(payload)
+    with contract.release_stage("notary-staple"):
+        contract.run(["xcrun", "stapler", "staple", dmg], capture_output=True)
+    with contract.release_stage("notary-validate"):
+        contract.run(["xcrun", "stapler", "validate", dmg], capture_output=True)
     return payload
 
 
@@ -170,5 +173,5 @@ if __name__ == "__main__":
     try:
         main()
     except (ValueError, RuntimeError, OSError, subprocess.CalledProcessError) as error:
-        print("CI security error: " + ("external command failed" if isinstance(error, subprocess.CalledProcessError) else str(error)), file=sys.stderr)
+        print("CI security error: " + contract.failure_message(error), file=sys.stderr)
         sys.exit(1)

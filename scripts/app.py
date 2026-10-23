@@ -521,6 +521,6 @@ if __name__ == "__main__":
     try:
         main()
     except (ValueError, RuntimeError, KeyError, OSError, subprocess.CalledProcessError) as error:
-        message = "External command failed" if isinstance(error, subprocess.CalledProcessError) else str(error)
+        message = getattr(error, "release_diagnostic", "External command failed" if isinstance(error, subprocess.CalledProcessError) else str(error))
         print(f"app: {message}", file=sys.stderr)
         sys.exit(1)

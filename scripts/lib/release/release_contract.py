@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import plistlib
 import re
 import stat
 import subprocess
+import sys
 import tempfile
 
 ARCHITECTURES = ("arm64", "x86_64", "universal")
@@ -93,6 +95,95 @@ def run(arguments, **kwargs):
 
 def output(arguments, **kwargs):
     return run(arguments, capture_output=True, text=True, **kwargs).stdout
+
+
+def failure_kind(error):
+    """Inspect known markers without printing arbitrary commands or tool output."""
+    def text(value):
+        return value.decode(errors="replace") if isinstance(value, bytes) else str(value or "")
+    detail = (text(error.stderr) + "\n" + text(error.stdout) if isinstance(error, subprocess.CalledProcessError)
+              else str(error))
+    if getattr(error, "code", None):
+        detail += f" HTTP {error.code}"
+    patterns = (
+        ("authentication", r"\bHTTP(?: status code)?\s*401\b|bad credentials|authentication (?:failed|rejected)|invalid username|could not read username"),
+        ("authorization", r"\bHTTP(?: status code)?\s*403\b|error:\s*403\b|write access .*not granted|permission .*denied|authorization rejected|protected branch|GH006|GH013|repository rule violations"),
+        ("repository-access", r"\bHTTP(?: status code)?\s*404\b|repository not found"),
+        ("network", r"could not resolve host|failed to connect|connection .*timed out|operation timed out|\bHTTP(?: status code)?\s*(?:429|5\d\d)\b|rate limit exceeded|TLS .*failed"),
+        ("concurrent-update", r"non-fast-forward|fetch first|stale info|cannot lock ref .*expected"),
+    )
+    for kind, pattern in patterns:
+        if re.search(pattern, detail, re.IGNORECASE):
+            return kind
+    if isinstance(error, FileNotFoundError):
+        return "tool-unavailable"
+    if isinstance(error, ValueError):
+        return "configuration" if detail.startswith("Missing ") else "validation"
+    return "external-command" if isinstance(error, subprocess.CalledProcessError) else "operation"
+
+
+def safe_message(value):
+    for name, secret in os.environ.items():
+        if secret and re.search(r"TOKEN|PASSWORD|PRIVATE_KEY|CERTIFICATE", name):
+            value = value.replace(secret, "[redacted]")
+    value = re.sub(r"\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+", "[redacted]", value)
+    value = re.sub(r"(https?://)[^\s/@]+(?::[^\s/@]+)?@", r"\1[redacted]@", value)
+    return re.sub(r"[\r\n]+", " ", value)[:800]
+
+
+def failure_message(error):
+    if hasattr(error, "release_diagnostic"):
+        return error.release_diagnostic
+    if isinstance(error, subprocess.CalledProcessError):
+        return f"External command failed (exit={error.returncode}); command and raw output omitted"
+    return safe_message(str(error))
+
+
+def report_failure(stage, error):
+    if hasattr(error, "release_diagnostic"):
+        return
+    kind = failure_kind(error)
+    status = f" exit={error.returncode}" if isinstance(error, subprocess.CalledProcessError) else ""
+    hints = {
+        "authentication": "Check credential validity and expiration.",
+        "authorization": "Check credential permissions and service policies.",
+        "repository-access": "Check repository spelling and credential access; HTTP 404 can also hide a private repository.",
+        "network": "Check DNS, connectivity, service availability and rate limits.",
+        "concurrent-update": "Inspect concurrent branch updates; the local cask commit is retained on failure.",
+        "tool-unavailable": "Check the runner toolchain and executable availability.",
+    }
+    hint = hints.get(kind, "Inspect this stage's preceding validation or tool logs.")
+    if stage.startswith("tap-"):
+        hint += " Tap credentials use HOMEBREW_TAP_TOKEN; the app workflow token is separate."
+        if kind == "authorization":
+            hint += " Check tap repository selection, Contents: write, organization approval and branch rules."
+    elif stage.startswith("notary-") or stage == "notarization":
+        hint += " Check APPLE_NOTARIZATION_KEY_ID, APPLE_NOTARIZATION_ISSUER_ID and the corresponding private key."
+    elif stage == "signing-keychain":
+        hint += " Check MACOS_CERTIFICATE, MACOS_CERTIFICATE_PASSWORD and the signing identity/team."
+    elif stage in ("github-api-read", "publish"):
+        hint += " GitHub operations use GH_TOKEN; verify the workflow token's repository access."
+    detail = "" if isinstance(error, subprocess.CalledProcessError) else " " + safe_message(str(error))
+    error.release_diagnostic = f"stage={stage} kind={kind}{status}.{detail} {hint}"
+    sys.stdout.flush()
+    print("[release] status=failed " + error.release_diagnostic, file=sys.stderr, flush=True)
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        escaped = error.release_diagnostic.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        print(f"::error title=Release {stage} ({kind})::{escaped}", file=sys.stderr, flush=True)
+
+
+@contextlib.contextmanager
+def release_stage(stage):
+    sys.stdout.flush()
+    print(f"[release] stage={stage} status=started", file=sys.stderr, flush=True)
+    try:
+        yield
+    except (ValueError, RuntimeError, OSError, subprocess.CalledProcessError) as error:
+        report_failure(stage, error)
+        raise
+    else:
+        sys.stdout.flush()
+        print(f"[release] stage={stage} status=completed", file=sys.stderr, flush=True)
 
 
 def digest(path):

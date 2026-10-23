@@ -45,48 +45,56 @@ def plan(root, config, version, build, publish=False):
 
 
 def execute(root, config, version, build, publish):
-    contract.require_ci_remote(True, True)
-    source = os.environ.get('GITHUB_SHA', '')
-    if not contract.COMMIT.fullmatch(source):
-        raise ValueError('Execution requires the full GITHUB_SHA')
-    state = contract.source_state(root, source)
-    if state['dirty']:
-        raise ValueError('Release execution requires a clean checkout')
-    if publish:
-        metadata = release.github_json('repos/' + config['repository'])
-        if metadata.get('visibility') != 'public':
-            raise ValueError('Public publication requires a public release repository')
-    ci_prepare.verify_toolchain()
-    flags = ['preflight', '--config', str(root / 'macos-app.json'), '--version', version,
-             '--build', build, '--source-commit', source, '--sign-mode', 'developer-id',
-             '--request-notarization', '--ci', '--allow-remote', '--online']
-    if publish:
-        flags += ['--request-publish', '--request-tap']
-    preflight = release.main(flags)
+    with contract.release_stage('preflight'):
+        contract.require_ci_remote(True, True)
+        source = os.environ.get('GITHUB_SHA', '')
+        if not contract.COMMIT.fullmatch(source):
+            raise ValueError('Execution requires the full GITHUB_SHA')
+        state = contract.source_state(root, source)
+        if state['dirty']:
+            raise ValueError('Release execution requires a clean checkout')
+        if publish:
+            metadata = release.github_json('repos/' + config['repository'])
+            if metadata.get('visibility') != 'public':
+                raise ValueError('Public publication requires a public release repository')
+        with contract.release_stage('toolchain'):
+            ci_prepare.verify_toolchain()
+        flags = ['preflight', '--config', str(root / 'macos-app.json'), '--version', version,
+                 '--build', build, '--source-commit', source, '--sign-mode', 'developer-id',
+                 '--request-notarization', '--ci', '--allow-remote', '--online']
+        if publish:
+            flags += ['--request-publish', '--request-tap']
+        preflight = release.main(flags)
     if not preflight['reuse']:
-        ci_prepare.prepare(root / 'macos-app.json', version, build, 'universal',
-                           root / 'dist/release/universal', signed=True, notarized=True)
-        contract.collect(config, root / 'dist/release', version, source, promotion=True)
+        with contract.release_stage('prepare'):
+            ci_prepare.prepare(root / 'macos-app.json', version, build, 'universal',
+                               root / 'dist/release/universal', signed=True, notarized=True)
+            contract.collect(config, root / 'dist/release', version, source, promotion=True)
     if publish:
-        proof = release.publish(config, version, source, root / 'dist/release')
+        with contract.release_stage('publish'):
+            proof = release.publish(config, version, source, root / 'dist/release')
+        print(f"[release] Public release verified: https://github.com/{config['repository']}/releases/tag/v{version}", file=sys.stderr, flush=True)
+        print('[release] Subsequent tap failures do not roll back this release; repair the cask without rebuilding or replacing published assets.', file=sys.stderr, flush=True)
         tap = root / '.build/release-tap'
         if tap.exists():
             raise ValueError('Tap execution needs a fresh checkout')
         tap.parent.mkdir(parents=True, exist_ok=True)
         # Supply the tap token through Git's credential helper environment, never the URL.
         env = dict(os.environ, GH_TOKEN=os.environ['HOMEBREW_TAP_TOKEN'])
-        contract.run(['git', '-c', 'credential.https://github.com.helper=', '-c',
-                      'credential.https://github.com.helper=!gh auth git-credential',
-                      'clone', '--branch', 'main', '--single-branch',
-                      'https://github.com/mayflies-app/homebrew-tap.git', tap], env=env)
-        contract.run(['git', '-C', tap, 'config', 'credential.https://github.com.helper', ''])
-        contract.run(['git', '-C', tap, 'config', '--add', 'credential.https://github.com.helper', '!gh auth git-credential'])
+        with contract.release_stage('tap-clone'):
+            contract.run(['git', '-c', 'credential.https://github.com.helper=', '-c',
+                          'credential.https://github.com.helper=!gh auth git-credential',
+                          'clone', '--branch', 'main', '--single-branch',
+                          'https://github.com/mayflies-app/homebrew-tap.git', tap], env=env, capture_output=True, text=True)
+            contract.run(['git', '-C', tap, 'config', 'credential.https://github.com.helper', ''])
+            contract.run(['git', '-C', tap, 'config', '--add', 'credential.https://github.com.helper', '!gh auth git-credential'])
         candidate = root / '.build/promotion.rb'
         candidate.write_text(contract.cask_text(config, version, proof['artifact']['sha256']))
         previous = os.environ.get('GH_TOKEN')
         os.environ['GH_TOKEN'] = os.environ['HOMEBREW_TAP_TOKEN']
         try:
-            tap_update.remote_update(tap, config, candidate, version, source, 'main', 'mayflies-app/homebrew-tap')
+            with contract.release_stage('tap-update'):
+                tap_update.remote_update(tap, config, candidate, version, source, 'main', 'mayflies-app/homebrew-tap')
         finally:
             if previous is None:
                 os.environ.pop('GH_TOKEN', None)

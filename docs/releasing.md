@@ -48,3 +48,14 @@ Tracked-input timestamps are reused only when content hashes, modes and checkout
 With `publish` enabled, the workflow verifies the public Universal DMG download and updates only `Casks/dockautohide.rb` in [mayflies-app/homebrew-tap](https://github.com/mayflies-app/homebrew-tap). The cask uses the final public DMG checksum, product bundle name and macOS 13.5 requirement.
 
 Homebrew installs the version recorded in the published cask. Local packages and version changes become available there only after a successful authorized publication and cask update. See the tap's [distribution documentation](https://github.com/mayflies-app/homebrew-tap/blob/main/docs/homebrew.md) for the shared release contract.
+
+## Release Diagnostics
+
+Release logs identify stages, failure kinds and external exit codes, with credential-safe
+GitHub error annotations. See [shared release diagnostics](https://github.com/mayflies-app/homebrew-tap/blob/main/docs/homebrew.md#release-diagnostics)
+for authentication, authorization, repository access, network, concurrency and validation errors.
+Tap updates use `HOMEBREW_TAP_TOKEN`, separately from the app workflow token.
+
+A tap failure after successful publication leaves the release assets published. Repair
+the cask from those verified public assets; do not rebuild or replace the same version.
+Only confirmed concurrent push rejection is rebased and retried.

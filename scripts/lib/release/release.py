@@ -21,7 +21,9 @@ def github_json(endpoint, missing_ok=False, paginate=False):
     if result.returncode:
         if missing_ok and "(HTTP 404)" in result.stderr:
             return None
-        raise RuntimeError("GitHub API read failed")
+        error = subprocess.CalledProcessError(result.returncode, command, output=result.stdout, stderr=result.stderr)
+        contract.report_failure("github-api-read", error)
+        raise error
     return json.loads(result.stdout)
 
 
@@ -266,6 +268,6 @@ if __name__ == "__main__":
         main()
     except (ValueError, RuntimeError, OSError, KeyError, subprocess.CalledProcessError) as error:
         # subprocess commands may contain credentials; never format their command.
-        message = "External command failed" if isinstance(error, subprocess.CalledProcessError) else str(error)
+        message = contract.failure_message(error)
         print(f"Release error: {message}", file=sys.stderr)
         sys.exit(1)

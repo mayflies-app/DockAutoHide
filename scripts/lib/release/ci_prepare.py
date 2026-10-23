@@ -317,18 +317,22 @@ def prepare(config_path, version, build, architecture, output, signed=False, not
     command = [sys.executable, "-B", str(root / "scripts/app.py"), "package", "--version", version, "--build", build,
                "--arch", architecture, "--output", str(output), "--sign", "developer-id" if signed else "ad-hoc"]
     if signed:
-        with ci_security.temporary_keychain() as environment:
-            contract.run(command, cwd=root, env=package_environment(environment))
+        with contract.release_stage("signing-keychain"), ci_security.temporary_keychain() as environment:
+            with contract.release_stage("package"):
+                contract.run(command, cwd=root, env=package_environment(environment))
     else:
-        contract.run(command, cwd=root, env=package_environment(os.environ))
+        with contract.release_stage("package"):
+            contract.run(command, cwd=root, env=package_environment(os.environ))
     app = output / "app" / (config["appName"] + ".app")
     dmg = output / contract.artifact_name(config, version, architecture)
     receipt = None
     if notarized:
         receipt = dmg.with_suffix(".notary.json")
-        ci_security.notarize(dmg, receipt)
-    manifest = contract.create_manifest(config, root, app, dmg, version, build, architecture,
-                                        signed, os.environ.get("MACOS_TEAM_ID"), receipt)
+        with contract.release_stage("notarization"):
+            ci_security.notarize(dmg, receipt)
+    with contract.release_stage("verify-final-artifact"):
+        manifest = contract.create_manifest(config, root, app, dmg, version, build, architecture,
+                                            signed, os.environ.get("MACOS_TEAM_ID"), receipt)
     dmg.with_suffix(".json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     dmg.with_suffix(".dmg.sha256").write_text(f"{manifest['artifact']['sha256']}  {dmg.name}\n")
     print(json.dumps({"artifact": manifest["artifact"], "notarization": manifest["notarization"]}, indent=2))
@@ -346,7 +350,8 @@ def main(argv=None):
         print(json.dumps(result, sort_keys=True))
         return result
     if argv == ["verify-toolchain"]:
-        result = verify_toolchain()
+        with contract.release_stage("toolchain"):
+            result = verify_toolchain()
         if os.environ.get("GITHUB_OUTPUT"):
             with Path(os.environ["GITHUB_OUTPUT"]).open("a") as stream:
                 stream.write(f"fingerprint={result['cacheFingerprint']}\narchitecture={result['nativeArchitecture']}\n")
@@ -372,5 +377,5 @@ if __name__ == "__main__":
     try:
         main()
     except (ValueError, RuntimeError, OSError, subprocess.CalledProcessError) as error:
-        print("CI preparation error: " + ("external command failed" if isinstance(error, subprocess.CalledProcessError) else str(error)), file=sys.stderr)
+        print("CI preparation error: " + contract.failure_message(error), file=sys.stderr)
         sys.exit(1)

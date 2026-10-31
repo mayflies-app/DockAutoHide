@@ -28,7 +28,7 @@ jobs:
     if: inputs.dry_run
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Preview
@@ -47,7 +47,7 @@ jobs:
       version: ${{ steps.preflight.outputs.version }}
       reuse: ${{ steps.preflight.outputs.reuse }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Validate source and publication eligibility
@@ -70,7 +70,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - run: python3 -B scripts/lib/release/ci_prepare.py verify-toolchain
@@ -103,9 +103,10 @@ jobs:
           key: ${{ steps.build-cache.outputs.cache-primary-key }}
       - name: Preserve signed bundle permissions and symlinks
         run: tar -cf dist/release-signed.tar -C dist/release universal
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         id: signed
         with:
+          archive: true
           name: release-signed-${{ github.run_attempt }}
           path: dist/release-signed.tar
           if-no-files-found: error
@@ -121,7 +122,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Validate artifact handoff
@@ -129,11 +130,12 @@ jobs:
           ARTIFACT_ID: ${{ needs.package.outputs.artifact }}
         run: |
           [[ "$ARTIFACT_ID" =~ ^[0-9]+$ ]] || { echo "::error::Missing or invalid signed package artifact ID"; exit 1; }
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           artifact-ids: ${{ needs.package.outputs.artifact }}
           path: dist
           merge-multiple: true
+          digest-mismatch: error
       - name: Restore the exact signed package
         run: |
           mkdir -p dist/release
@@ -149,17 +151,19 @@ jobs:
         run: ./scripts/app.py release --execute --stage notarize --version "$RELEASE_VERSION" --build "$GITHUB_RUN_NUMBER"
       - name: Retain submission checkpoint and Apple diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
+          archive: true
           name: release-notary-state-${{ github.run_attempt }}
           path: |
             dist/release/universal/*.notary.json
             dist/release/universal/*.notary.submission.json
             dist/release/universal/*.notary.log.json
           if-no-files-found: warn
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         id: notarized
         with:
+          archive: true
           name: release-notarized-${{ github.run_attempt }}
           path: |
             dist/release/universal/*.dmg
@@ -177,7 +181,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Validate artifact handoff
@@ -186,12 +190,13 @@ jobs:
           ARTIFACT_ID: ${{ needs.notarize.outputs.artifact }}
         run: |
           [[ "$ARTIFACT_ID" =~ ^[0-9]+$ ]] || { echo "::error::Missing or invalid notarized package artifact ID"; exit 1; }
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         if: needs.preflight.outputs.reuse != 'true'
         with:
           artifact-ids: ${{ needs.notarize.outputs.artifact }}
           path: dist/release/universal
           merge-multiple: true
+          digest-mismatch: error
       - name: Publish or verify the existing immutable release
         env:
           RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
@@ -202,7 +207,7 @@ jobs:
     if: "!cancelled() && inputs.publish && needs.preflight.result == 'success' && needs.publish.result == 'success'"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Verify public assets and update only the target cask
